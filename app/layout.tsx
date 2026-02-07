@@ -22,6 +22,7 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={`${ubuntu.variable} font-sans antialiased`}
+        suppressHydrationWarning
       >
         {children}
       </body>

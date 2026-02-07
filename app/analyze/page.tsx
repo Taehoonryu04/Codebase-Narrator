@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { RepoInputForm } from "@/components/analyze/RepoInputForm";
 import { AnalysisResult } from "@/components/analyze/AnalysisResult";
+import { FloatingPaths } from "@/components/ui/floating-paths";
 import type { AnalysisResult as AnalysisResultType } from "@/lib/types";
 
 /**
@@ -63,9 +64,15 @@ export default function AnalyzePage() {
     };
 
     return (
-        <div className="min-h-screen bg-white dark:bg-neutral-950">
+        <div className="relative min-h-screen w-full bg-white dark:bg-neutral-950">
+            {/* Fixed Background */}
+            <div className="fixed inset-0 pointer-events-none">
+                <FloatingPaths position={1} />
+                <FloatingPaths position={-1} />
+            </div>
+
             {/* Header */}
-            <header className="border-b border-neutral-200 dark:border-neutral-800">
+            <header className="relative z-10 border-b border-neutral-200 dark:border-neutral-800">
                 <div className="container mx-auto px-4 py-6">
                     <motion.a
                         href="/"
@@ -97,7 +104,7 @@ export default function AnalyzePage() {
             </header>
 
             {/* Main Content */}
-            <main className="container mx-auto px-4 py-12">
+            <main className="relative z-10 container mx-auto px-4 py-12">
                 {/* Input Form */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
