@@ -44,7 +44,7 @@ export default function AnalyzePage() {
                 },
                 body: JSON.stringify({
                     repoUrl: url,
-                    maxFiles: 20,
+                    maxFiles: 50,
                 }),
             });
 

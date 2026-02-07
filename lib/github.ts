@@ -307,19 +307,23 @@ export async function getFileContent(
  *
  * 최적화:
  * - Promise.all을 사용해서 병렬 처리
- * - Rate limit을 고려해서 한 번에 최대 5개씩만 요청
+ * - Rate limit을 고려해서 한 번에 최대 10개씩만 요청
+ * - 우선순위 정렬: 핵심 파일(entry points, config)을 먼저 가져옴
  */
 export async function getMultipleFileContents(
     owner: string,
     repo: string,
     paths: string[]
 ): Promise<Array<{ path: string; content: string | null }>> {
-    const BATCH_SIZE = 5;
+    const BATCH_SIZE = 10;
     const results: Array<{ path: string; content: string | null }> = [];
 
+    // 우선순위 정렬: 핵심 파일이 먼저 처리되도록
+    const sorted = prioritizePaths(paths);
+
     // 배치로 나누어서 처리
-    for (let i = 0; i < paths.length; i += BATCH_SIZE) {
-        const batch = paths.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < sorted.length; i += BATCH_SIZE) {
+        const batch = sorted.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(
             batch.map(async (path) => ({
                 path,
@@ -330,4 +334,53 @@ export async function getMultipleFileContents(
     }
 
     return results;
+}
+
+/**
+ * 파일 경로 우선순위 정렬
+ *
+ * 핵심 파일을 먼저 분석해 토큰 한도 내에서 최대한의 인사이트를 확보.
+ * Tier 0: Entry points & config (package.json, main, index 등)
+ * Tier 1: Source code (lib/, src/, app/ 내부)
+ * Tier 2: Tests, docs, 기타
+ */
+function prioritizePaths(paths: string[]): string[] {
+    const tier0 = /^(package\.json|README\.md|tsconfig.*\.json|next\.config|vite\.config|Cargo\.toml|go\.mod|pyproject\.toml|Dockerfile|docker-compose)/i;
+    const tier1Entry = /^(src|lib|app|pages|server|core|internal|cmd|pkg)\//i;
+    const tier2 = /\.(test|spec|stories|e2e)\./i;
+
+    return [...paths].sort((a, b) => {
+        const scoreA = tier0.test(a) ? 0 : tier2.test(a) ? 2 : tier1Entry.test(a) ? 1 : 1.5;
+        const scoreB = tier0.test(b) ? 0 : tier2.test(b) ? 2 : tier1Entry.test(b) ? 1 : 1.5;
+        return scoreA - scoreB;
+    });
+}
+
+/**
+ * 파일 내용을 하나의 거대한 텍스트 블록으로 패키징
+ *
+ * 포맷:
+ *   [File: path/to/file.js]
+ *   (실제 코드 내용)
+ *
+ * Gemini에 전달할 때 구조적으로 파싱 가능한 형태로 구성.
+ * 각 파일은 maxLinesPerFile 줄까지만 포함해 토큰 절약.
+ */
+export function buildCodebaseTextBlock(
+    fileContents: Array<{ path: string; content: string | null }>,
+    maxLinesPerFile: number = 600
+): string {
+    const blocks: string[] = [];
+
+    for (const file of fileContents) {
+        if (!file.content) continue;
+
+        const truncatedLines = file.content.split("\n").slice(0, maxLinesPerFile);
+        const wasTruncated = file.content.split("\n").length > maxLinesPerFile;
+        const suffix = wasTruncated ? `\n... (truncated at ${maxLinesPerFile} lines)` : "";
+
+        blocks.push(`[File: ${file.path}]\n${truncatedLines.join("\n")}${suffix}`);
+    }
+
+    return blocks.join("\n\n");
 }

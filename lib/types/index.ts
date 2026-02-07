@@ -27,6 +27,15 @@ export interface AnalysisResult {
         techStack: string[];
         architecture: string;
         keyFeatures: string[];
+        codeQuality?: {
+            score: number;
+            strengths: string[];
+            improvements: string[];
+        };
+        dataFlow?: string;
+        entryPoints?: string[];
     };
+    analyzedFiles: number;
+    totalFiles: number;
     timestamp: string;
 }

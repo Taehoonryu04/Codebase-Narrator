@@ -46,7 +46,7 @@ export const githubUrlSchema = z.object({
 export const analyzeRequestSchema = z.object({
     repoUrl: z.string().url("Invalid URL format"),
     includeContent: z.boolean().optional().default(true), // Whether to analyze file contents
-    maxFiles: z.number().min(1).max(50).optional().default(20), // Maximum number of files to analyze
+    maxFiles: z.number().min(1).max(100).optional().default(50), // Maximum number of files for deep analysis
 });
 
 /**
@@ -63,8 +63,8 @@ export type AnalyzeRequestInput = z.infer<typeof analyzeRequestSchema>;
  * Convert Zod errors to user-friendly messages
  */
 export function formatZodError(error: z.ZodError): string {
-    const firstError = error.errors[0];
-    return firstError?.message || "Invalid input";
+    const firstIssue = error.issues[0];
+    return firstIssue?.message || "Invalid input";
 }
 
 /**

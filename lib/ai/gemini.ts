@@ -4,16 +4,10 @@ import type { GitHubRepo, FileNode } from "../types";
 /**
  * Gemini AI Client Initialization
  *
- * Concept:
- * - Google Generative AI SDK
- * - gemini-1.5-flash: Fast and efficient model for code analysis
- * - API Key from environment variables
- *
  * Model Selection Guide (as of 2026):
- * - gemini-2.0-flash: Fast and stable model for code analysis (Currently used)
- * - gemini-2.5-flash: Newer model with extended context (1M tokens)
- * - gemini-2.5-pro: Most capable but slower
- * - Note: gemini-1.5-* models have been deprecated
+ * - gemini-2.5-flash: Fast model with 1M token context — ideal for full codebase analysis
+ * - gemini-2.5-pro: Most capable but slower, use for premium analysis
+ * - Note: gemini-1.5-* and gemini-2.0-* models have been deprecated
  */
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -24,87 +18,81 @@ if (!apiKey) {
 const genAI = new GoogleGenerativeAI(apiKey);
 
 /**
- * Create analysis prompt for codebase
+ * 전체 코드베이스 분석을 위한 프롬프트 생성
  *
  * Prompt Engineering Strategy:
- * 1. Clear role definition (You are a senior architect)
- * 2. Structured output request (JSON format)
- * 3. Specific analysis items
+ * 1. "세계 최고의 아키텍트" 페르소나 설정
+ * 2. README는 참고만, 실제 소스코드 전체 분석 지시
+ * 3. [File: path] 형식의 텍스트 블록을 직접 읽도록 구성
+ * 4. JSON-only output 강제
  */
 function createAnalysisPrompt(
     repoInfo: GitHubRepo,
     fileStructure: FileNode[],
-    fileContents: Array<{ path: string; content: string | null }>
+    codebaseTextBlock: string
 ): string {
-    // Format file list for readability
     const fileList = fileStructure.map((file) => `- ${file.path}`).join("\n");
 
-    // Include main file contents (first 500 lines to avoid being too long)
-    const relevantContents = fileContents
-        .filter((f) => f.content !== null)
-        .map((f) => {
-            const lines = f.content!.split("\n").slice(0, 500).join("\n");
-            return `\n### ${f.path}\n\`\`\`\n${lines}\n\`\`\``;
-        })
-        .join("\n");
+    return `You are the world's greatest software architect. You have been given the ENTIRE source code of a real project. Your task is to analyze the actual code — not just the README or metadata — and reveal this project's TRUE IDENTITY.
 
-    return `You are a world-class senior software architect and code analyst.
-Analyze the GitHub repository below and provide clear, insightful explanations.
+README and description are REFERENCE ONLY. Your analysis must be grounded in the actual source code provided below.
 
-## Repository Information
+## Repository Metadata (reference only)
 - Name: ${repoInfo.fullName}
-- Description: ${repoInfo.description || "No description"}
-- Main Language: ${repoInfo.language || "Unknown"}
+- Description: ${repoInfo.description || "No description provided"}
+- Primary Language: ${repoInfo.language || "Unknown"}
 - Stars: ${repoInfo.stars}
 - Topics: ${repoInfo.topics.join(", ") || "None"}
 
-## File Structure
+## Complete File Tree (${fileStructure.length} files detected)
 ${fileList}
 
-## Key File Contents
-${relevantContents}
+## Full Source Code
+Below is the entire codebase packaged in [File: path] format. Analyze every file thoroughly.
+
+${codebaseTextBlock}
 
 ---
 
-IMPORTANT: Respond ONLY with valid JSON. Do not include any markdown code blocks, explanations, or other text.
-Your response must start with { and end with }.
+Based on your deep reading of the ACTUAL SOURCE CODE above, produce a comprehensive analysis.
 
-Provide the analysis in the following JSON format:
+CRITICAL RULES:
+1. Respond ONLY with valid JSON. No markdown, no explanation, no code blocks.
+2. Your response must start with { and end with }.
+3. Every claim must be traceable to actual code you read — do not hallucinate features.
+4. Be specific: reference actual file names, function names, and patterns you observed.
 
 {
-  "summary": "A clear 2-3 sentence description of what this project does",
-  "techStack": ["List of technologies used (e.g., React, Next.js, TypeScript, Tailwind CSS)"],
-  "architecture": "Description of the architectural pattern and structure (e.g., MVC, Clean Architecture, Monorepo, etc.)",
+  "summary": "2-3 sentence description of what this project ACTUALLY does, based on source code analysis (not just the README)",
+  "techStack": ["Every technology, framework, and library actually used — inferred from imports, package.json, config files"],
+  "architecture": "Detailed description of the architectural pattern. Reference specific directories and files. (e.g., 'Next.js App Router with lib/ for business logic separation, API routes in app/api/, shared types in lib/types/')",
   "keyFeatures": [
-    "Key feature 1 (be specific)",
-    "Key feature 2",
-    "Key feature 3"
+    "Feature 1 — cite the specific files/functions implementing it",
+    "Feature 2 — with evidence from source code",
+    "Feature 3 — be specific, not generic"
   ],
   "codeQuality": {
     "score": 85,
-    "strengths": ["Strength 1", "Strength 2"],
-    "improvements": ["Improvement area 1", "Improvement area 2"]
+    "strengths": ["Specific strength with file/pattern reference", "Another strength"],
+    "improvements": ["Specific improvement suggestion", "Another suggestion"]
   },
-  "dataFlow": "Description of how data flows through the system (e.g., API → Service → DB)",
-  "entryPoints": ["main.ts", "app/page.tsx", "etc. - list of entry point files"]
-}
-
-Remember: Output ONLY the JSON object, nothing else.`;
+  "dataFlow": "Trace the main data flow from user input to final output, referencing actual files. (e.g., 'User submits URL in AnalyzeForm → POST /api/analyze → parseGitHubUrl() → getRepoInfo() → getRepoFileTree() → Gemini AI → AnalysisResult rendered by AnalysisResult.tsx')",
+  "entryPoints": ["List actual entry point files found in the codebase"]
+}`;
 }
 
 /**
- * Gemini API로 코드베이스 분석하기
+ * Gemini API로 전체 코드베이스 심층 분석
  *
- * API 호출 흐름:
- * 1. 프롬프트 생성
- * 2. Gemini API 호출
- * 3. 응답 파싱 (JSON 추출)
- * 4. 에러 핸들링
+ * 핵심 변경:
+ * - 파일별 마크다운 포맷 대신 [File: path] 텍스트 블록 사용
+ * - 소스코드 중심 분석 (README 참고 수준)
+ * - 1M 토큰 컨텍스트 활용한 대규모 분석
  */
 export async function analyzeCodebase(
     repoInfo: GitHubRepo,
     fileStructure: FileNode[],
-    fileContents: Array<{ path: string; content: string | null }>
+    codebaseTextBlock: string
 ): Promise<{
     summary: string;
     techStack: string[];
@@ -119,43 +107,37 @@ export async function analyzeCodebase(
     entryPoints?: string[];
 }> {
     try {
-        // Check if we have enough content to analyze
-        const filesWithContent = fileContents.filter((f) => f.content !== null);
-
-        if (filesWithContent.length === 0) {
+        if (!codebaseTextBlock.trim()) {
             console.warn("⚠️ No file contents available for analysis");
             return {
                 summary: `${repoInfo.fullName}: ${repoInfo.description || "A GitHub repository"}`,
                 techStack: repoInfo.language ? [repoInfo.language] : ["Unknown"],
-                architecture: "Insufficient data - repository appears to contain only documentation files",
+                architecture: "Insufficient data — repository appears to contain only non-code files",
                 keyFeatures: [
-                    "Unable to analyze - no source code files found",
-                    "This may be a documentation-only repository",
+                    "Unable to analyze — no source code files found",
+                    "This may be a documentation-only or binary-only repository",
                 ],
             };
         }
-        // 1. Model selection (using gemini-2.5-flash)
-        // gemini-2.5-flash: Newest, fast, supports up to 1M tokens
+
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const prompt = createAnalysisPrompt(repoInfo, fileStructure, codebaseTextBlock);
 
-        // 2. Generate prompt
-        const prompt = createAnalysisPrompt(repoInfo, fileStructure, fileContents);
+        console.log("🤖 Starting Gemini deep analysis...");
+        console.log(`📊 Prompt size: ~${Math.round(prompt.length / 1000)}K characters`);
 
-        // 3. Call API
-        console.log("🤖 Starting Gemini API call...");
-        console.log(`📊 Analyzing ${fileContents.filter(f => f.content !== null).length} files with content`);
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
 
         console.log("✅ Gemini API response received");
-        console.log(`📝 Response preview: ${text.substring(0, 200)}...`);
+        console.log(`📝 Response length: ${text.length} chars`);
 
-        // 4. Extract JSON (remove markdown code blocks if present)
+        // Extract JSON — handle both raw JSON and markdown-wrapped JSON
         const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
 
         if (!jsonMatch) {
-            console.error("❌ JSON parsing failed, raw response:", text);
+            console.error("❌ JSON parsing failed, raw response:", text.substring(0, 500));
             throw new Error("Could not find JSON in AI response");
         }
 
@@ -166,18 +148,15 @@ export async function analyzeCodebase(
     } catch (error) {
         console.error("❌ Gemini API error:", error);
 
-        // Log detailed error information
         if (error instanceof Error) {
             console.error("Error name:", error.name);
             console.error("Error message:", error.message);
-            console.error("Error stack:", error.stack);
         }
 
-        // Return default analysis result on error
         return {
             summary: `${repoInfo.fullName} project. ${repoInfo.description || "Unable to perform detailed analysis."}`,
             techStack: repoInfo.language ? [repoInfo.language] : ["Unknown"],
-            architecture: "Analysis failed",
+            architecture: "Analysis failed — please try again",
             keyFeatures: ["Unable to complete analysis. Please try again."],
         };
     }

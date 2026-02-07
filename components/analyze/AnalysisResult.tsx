@@ -19,7 +19,7 @@ interface AnalysisResultProps {
  * - Code quality (if available)
  */
 export function AnalysisResult({ result }: AnalysisResultProps) {
-    const { repoInfo, analysis, fileStructure } = result;
+    const { repoInfo, analysis, fileStructure, analyzedFiles, totalFiles } = result;
 
     return (
         <div className="max-w-6xl mx-auto space-y-8">
@@ -217,6 +217,31 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
                         <p className="text-neutral-700 dark:text-neutral-300">{analysis.dataFlow}</p>
                     </motion.div>
                 )}
+
+                {/* Entry Points (if available) */}
+                {analysis.entryPoints && analysis.entryPoints.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.65 }}
+                        className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6"
+                    >
+                        <h3 className="text-xl font-bold mb-4 text-neutral-900 dark:text-white flex items-center">
+                            <span className="mr-2">🚀</span>
+                            Entry Points
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                            {analysis.entryPoints.map((entry) => (
+                                <span
+                                    key={entry}
+                                    className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-sm font-mono text-neutral-700 dark:text-neutral-300"
+                                >
+                                    {entry}
+                                </span>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
             </div>
 
             {/* File Structure */}
@@ -226,10 +251,17 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
                 transition={{ delay: 0.7 }}
                 className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6"
             >
-                <h3 className="text-xl font-bold mb-4 text-neutral-900 dark:text-white flex items-center">
-                    <span className="mr-2">📁</span>
-                    Analyzed File Structure ({fileStructure.length} files)
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center">
+                        <span className="mr-2">📁</span>
+                        File Structure
+                    </h3>
+                    {analyzedFiles != null && totalFiles != null && (
+                        <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                            {analyzedFiles} analyzed / {totalFiles} detected
+                        </span>
+                    )}
+                </div>
                 <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg p-4 max-h-96 overflow-y-auto">
                     <ul className="space-y-1 font-mono text-sm text-neutral-700 dark:text-neutral-300">
                         {fileStructure.map((file) => (
