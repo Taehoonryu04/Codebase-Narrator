@@ -1,6 +1,5 @@
+import { Hero } from "@/components/main/hero";
+
 export default function Home() {
-  return (
-    <div>hihi
-    </div>
-  );
+    return <Hero title="AI Codebase Narrator" />;
 }
