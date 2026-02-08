@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { RepoInputForm } from "@/components/analyze/RepoInputForm";
 import { AnalysisResult } from "@/components/analyze/AnalysisResult";
@@ -8,29 +9,28 @@ import { FloatingPaths } from "@/components/ui/floating-paths";
 import type { AnalysisResult as AnalysisResultType } from "@/lib/types";
 
 /**
- * Analysis Page (Client Component)
- *
- * State management:
- * - repoUrl: GitHub URL entered by user
- * - isAnalyzing: Whether analysis is in progress
- * - result: Analysis result
- * - error: Error message
+ * Inner component that reads search params (must be inside Suspense)
  */
-export default function AnalyzePage() {
+function AnalyzeContent() {
+    const searchParams = useSearchParams();
     const [repoUrl, setRepoUrl] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [result, setResult] = useState<AnalysisResultType | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const autoTriggered = useRef(false);
 
-    /**
-     * Analysis start handler
-     *
-     * API call flow:
-     * 1. Start loading state
-     * 2. Call POST /api/analyze
-     * 3. Handle response (success/failure)
-     * 4. End loading state
-     */
+    // Auto-analyze from query params (e.g., from History re-analyze)
+    useEffect(() => {
+        const repoParam = searchParams.get("repo");
+        const autoParam = searchParams.get("auto");
+
+        if (repoParam && autoParam === "true" && !autoTriggered.current) {
+            autoTriggered.current = true;
+            handleAnalyze(repoParam);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
+
     const handleAnalyze = async (url: string) => {
         setIsAnalyzing(true);
         setError(null);
@@ -112,7 +112,11 @@ export default function AnalyzePage() {
                     transition={{ delay: 0.3 }}
                     className="max-w-3xl mx-auto"
                 >
-                    <RepoInputForm onSubmit={handleAnalyze} isLoading={isAnalyzing} />
+                    <RepoInputForm
+                        onSubmit={handleAnalyze}
+                        isLoading={isAnalyzing}
+                        initialUrl={searchParams.get("repo") ?? ""}
+                    />
                 </motion.div>
 
                 {/* Loading State */}
@@ -163,5 +167,23 @@ export default function AnalyzePage() {
                 )}
             </main>
         </div>
+    );
+}
+
+/**
+ * Analysis Page (Client Component)
+ *
+ * Wrapped in Suspense for useSearchParams() support.
+ * Supports auto-analyze via query params: ?repo={url}&auto=true
+ */
+export default function AnalyzePage() {
+    return (
+        <Suspense fallback={
+            <div className="relative min-h-screen w-full bg-white dark:bg-neutral-950 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-neutral-900 dark:border-white" />
+            </div>
+        }>
+            <AnalyzeContent />
+        </Suspense>
     );
 }

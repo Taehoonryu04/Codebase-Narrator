@@ -1,0 +1,98 @@
+// Prisma Schema for AI Codebase Narrator
+// Phase 2: GitHub OAuth + User Analysis History
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// NextAuth.js required models
+// Reference: https://authjs.dev/getting-started/adapters/prisma
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  // GitHub-specific fields
+  githubId      String?   @unique
+  githubLogin   String?   // GitHub username
+
+  // Encrypted GitHub access token (AES-256-GCM encrypted)
+  // Format: "iv:encrypted_token:auth_tag" (base64 encoded)
+  githubTokenEncrypted String? @db.Text
+
+  accounts      Account[]
+  sessions      Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([githubId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Phase 2.2: Analysis History
+// Stores user's past analysis results
+// userId references Supabase Auth user (not Prisma User table)
+// Same user + same repo → upsert (only latest analysis kept)
+model Analysis {
+  id           String   @id @default(cuid())
+  userId       String   // Supabase Auth user ID
+  repoUrl      String
+  repoOwner    String
+  repoName     String
+  repoFullName String
+  result       Json
+  analyzedFiles Int
+  totalFiles    Int
+  analyzedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, repoFullName])
+  @@index([userId, analyzedAt(sort: Desc)])
+}

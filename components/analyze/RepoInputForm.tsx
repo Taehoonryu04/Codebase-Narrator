@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 interface RepoInputFormProps {
     onSubmit: (url: string) => void;
     isLoading: boolean;
+    initialUrl?: string;
 }
 
 /**
@@ -16,8 +17,8 @@ interface RepoInputFormProps {
  * - Client-side validation
  * - Quick example URL input
  */
-export function RepoInputForm({ onSubmit, isLoading }: RepoInputFormProps) {
-    const [url, setUrl] = useState("");
+export function RepoInputForm({ onSubmit, isLoading, initialUrl = "" }: RepoInputFormProps) {
+    const [url, setUrl] = useState(initialUrl);
     const [error, setError] = useState("");
 
     // Example repository list

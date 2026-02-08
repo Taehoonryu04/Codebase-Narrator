@@ -1,0 +1,560 @@
+Claude’s Plan
+Phase 2 Implementation Plan: GitHub OAuth & User Analysis History
+Context
+Why This Change?
+Currently, the AI Codebase Narrator can only analyze public GitHub repositories using a shared API token. Users cannot analyze their private repositories, and there's no way to track or revisit past analyses. Phase 2 addresses these limitations by:
+
+GitHub OAuth Authentication - Enables users to sign in and grant access to their private repositories
+User Analysis History - Persists analysis results so users can revisit past insights
+This transformation turns the app from a stateless public-only tool into a full-featured platform suitable for professional use, demonstrating production-grade architecture for Big Tech recruiters.
+
+Current State (Phase 1):
+
+No authentication - completely anonymous
+Single shared GITHUB_TOKEN for all requests (optional)
+Public repositories only
+No data persistence (stateless API)
+Analysis results lost on page refresh
+Implementation Strategy:
+Based on user preferences, we'll implement Phase 2 in two sequential stages:
+
+Phase 2.1: GitHub OAuth + Private Repository Access (2-3 weeks)
+Phase 2.2: User Analysis History (1-2 weeks)
+This progressive approach allows testing and validation at each stage while maintaining backward compatibility with anonymous public repo analysis.
+
+Technology Stack
+Database: Prisma + Supabase PostgreSQL
+Prisma: Type-safe ORM with excellent TypeScript integration and automatic migration generation
+Supabase: Managed PostgreSQL with generous free tier, built-in monitoring, and vector support for Phase 3
+Provides production-grade schema management and type safety
+Authentication: NextAuth.js v5 (Auth.js)
+Official Next.js recommendation for App Router
+Built-in GitHub OAuth provider with session management
+Supports both JWT and database sessions (we'll use database sessions)
+Excellent TypeScript support and active maintenance
+Token Security: AES-256-GCM Encryption
+Node.js built-in crypto module
+No external dependencies
+Industry-standard encryption for storing GitHub tokens
+Includes authentication tags to prevent tampering
+Phase 2.1: GitHub OAuth + Private Repository Access
+Overview
+Enable users to sign in with GitHub and analyze their private repositories using per-user OAuth tokens.
+
+Database Schema
+Prisma Schema (prisma/schema.prisma):
+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// NextAuth.js required tables
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  // GitHub-specific fields
+  githubId      String?   @unique
+  githubLogin   String?
+
+  // Encrypted GitHub access token (AES-256-GCM)
+  // Format: "iv:encrypted_token:auth_tag"
+  githubTokenEncrypted String?
+
+  accounts      Account[]
+  sessions      Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([githubId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+Key Features
+Database Sessions: More secure than JWT for OAuth token storage
+Token Encryption: GitHub tokens stored encrypted in githubTokenEncrypted field
+Cascade Deletes: User deletion cascades to related records (GDPR compliance)
+Optimized Indexes: Fast lookups by email, githubId, and userId
+New Files & Modifications
+New Files:
+
+
+lib/
+├── auth/
+│   ├── index.ts              # NextAuth.js configuration & exports
+│   ├── encryption.ts         # AES-256-GCM token encryption utilities
+│   └── github-client.ts      # Per-user Octokit client factory
+└── db/
+    └── prisma.ts             # Prisma client singleton
+
+app/
+├── api/
+│   └── auth/
+│       └── [...nextauth]/
+│           └── route.ts      # NextAuth.js API route handlers
+
+components/
+└── auth/
+    ├── AuthProvider.tsx      # Client-side session provider
+    ├── SignInButton.tsx      # GitHub OAuth sign-in button
+    └── UserMenu.tsx          # User dropdown menu (profile, sign out)
+
+types/
+└── next-auth.d.ts           # NextAuth type augmentation
+
+prisma/
+└── schema.prisma            # Database schema
+Modified Files:
+
+
+lib/
+├── github.ts                # Accept optional `octokit` parameter in all functions
+└── types/index.ts           # Add Session, User, and auth-related types
+
+app/
+├── api/analyze/route.ts     # Use per-user GitHub token, maintain anonymous fallback
+├── layout.tsx               # Wrap with AuthProvider, add navigation
+└── analyze/page.tsx         # Add "Sign in for private repos" CTA
+
+components/
+└── analyze/
+    └── RepoInputForm.tsx    # Add authentication prompt for private repos
+
+.env.example                 # Add database and auth environment variables
+Environment Variables
+New .env.example additions:
+
+
+# Database (Required for Phase 2)
+DATABASE_URL=postgresql://user:password@db.supabase.co:5432/postgres
+
+# NextAuth.js (Required for Phase 2)
+# Generate with: openssl rand -base64 32
+NEXTAUTH_SECRET=your_nextauth_secret_minimum_32_characters
+
+# Base URL for OAuth callbacks
+NEXTAUTH_URL=http://localhost:3000
+
+# GitHub OAuth App Credentials
+# Create at: https://github.com/settings/developers
+GITHUB_CLIENT_ID=your_github_oauth_client_id
+GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
+
+# Token Encryption Key (Required for Phase 2)
+# Generate with: openssl rand -hex 32
+TOKEN_ENCRYPTION_KEY=your_64_character_hex_encryption_key
+Implementation Steps (Sequential)
+Week 1: Database & Encryption Foundation
+
+Create Supabase project and get DATABASE_URL
+Install dependencies: npm install prisma @prisma/client next-auth@beta @auth/prisma-adapter
+Create prisma/schema.prisma with User/Account/Session/VerificationToken models
+Run initial migration: npx prisma migrate dev --name init
+Generate Prisma client: npx prisma generate
+Create lib/db/prisma.ts (singleton pattern)
+Create lib/auth/encryption.ts (AES-256-GCM encrypt/decrypt functions)
+Test database connection: npx prisma studio
+Week 2: GitHub OAuth Integration
+9. Create GitHub OAuth App at https://github.com/settings/developers
+
+Homepage URL: http://localhost:3000
+Callback URL: http://localhost:3000/api/auth/callback/github
+Scopes: read:user user:email repo
+Add OAuth credentials to .env.local
+Create lib/auth/index.ts (NextAuth.js configuration)
+Create app/api/auth/[...nextauth]/route.ts (export handlers)
+Create types/next-auth.d.ts (TypeScript type augmentation)
+Create components/auth/AuthProvider.tsx (SessionProvider wrapper)
+Create components/auth/SignInButton.tsx (OAuth trigger)
+Create components/auth/UserMenu.tsx (user profile dropdown)
+Update app/layout.tsx to wrap app with AuthProvider and add nav
+Test OAuth flow end-to-end
+Week 3: Per-User GitHub Access
+19. Create lib/auth/github-client.ts (factory function for authenticated Octokit)
+20. Modify lib/github.ts:
+- Remove global octokit constant
+- Add optional octokit?: Octokit parameter to all functions:
+- getRepoInfo(owner, repo, octokit?)
+- getRepoFileTree(owner, repo, maxDepth, octokit?)
+- getFileContent(owner, repo, path, octokit?)
+- getMultipleFileContents(owner, repo, paths, octokit?)
+- Create default factory: getDefaultOctokit()
+21. Modify app/api/analyze/route.ts:
+- Import getAuthenticatedOctokit() from lib/auth/github-client
+- Call await getAuthenticatedOctokit() to get user's Octokit client
+- Pass client to all GitHub API functions
+- Add fallback to shared token for anonymous users
+22. Update app/analyze/page.tsx to show "Sign in to analyze private repos" CTA
+23. Test private repository analysis with authenticated user
+
+Backward Compatibility
+Anonymous users can still analyze public repositories (uses shared GITHUB_TOKEN or no token)
+No breaking changes to existing AnalysisResult type or API contract
+All GitHub API wrapper functions remain backward compatible with default parameters
+Clear CTAs guide users to sign in for private repo access
+Security Considerations
+Token Storage: GitHub access tokens encrypted with AES-256-GCM before database storage
+Encryption Key: 32-byte key stored in TOKEN_ENCRYPTION_KEY environment variable (never in code)
+Session Security: Database sessions with 30-day expiration (NextAuth.js default)
+CSRF Protection: Built into NextAuth.js
+OAuth Scopes: Minimal required scopes (read:user user:email repo)
+No Token Exposure: Tokens never returned in API responses or exposed to client
+Phase 2.2: User Analysis History
+Overview
+Store analysis results for authenticated users and provide a history UI to revisit past analyses.
+
+Database Schema Extension
+Add to prisma/schema.prisma:
+
+
+model User {
+  // ... existing fields ...
+  analyses      Analysis[]  // Add this relation
+}
+
+model Analysis {
+  id        String   @id @default(cuid())
+  userId    String
+
+  // Repository information
+  repoUrl      String
+  repoOwner    String
+  repoName     String
+  repoFullName String  // e.g., "vercel/next.js"
+
+  // Analysis result (stored as JSONB for flexibility)
+  result       Json
+
+  // Metadata
+  analyzedFiles Int
+  totalFiles    Int
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([repoFullName])
+}
+New Files & Modifications
+New Files:
+
+
+app/
+├── api/
+│   └── history/
+│       └── route.ts         # GET endpoint for fetching user history
+└── history/
+    └── page.tsx             # History page UI
+
+components/
+└── history/
+    ├── AnalysisCard.tsx     # Individual analysis card component
+    └── HistoryList.tsx      # Paginated list with cards
+Modified Files:
+
+
+app/api/analyze/route.ts     # Save analysis to database for authenticated users
+lib/types/index.ts           # Add AnalysisHistoryItem, HistoryResponse types
+Implementation Steps (Sequential)
+Week 4: History API & Database
+
+Add Analysis model to prisma/schema.prisma
+Run migration: npx prisma migrate dev --name add_analysis_history
+Modify app/api/analyze/route.ts:
+Check if user is authenticated (await auth())
+If authenticated, save AnalysisResult to database using prisma.analysis.create()
+Log save status (saved vs anonymous)
+Create app/api/history/route.ts:
+GET endpoint with pagination (?page=1&limit=20)
+Require authentication (return 401 if not signed in)
+Fetch analyses ordered by createdAt DESC
+Return paginated response with total count
+Test API endpoints with curl/Postman
+Week 5: History UI
+6. Create components/history/AnalysisCard.tsx:
+
+Display repo name, owner, timestamp
+Show analysis summary preview
+Link to full analysis results
+Framer Motion animations
+Create components/history/HistoryList.tsx:
+Render list of AnalysisCard components
+Pagination controls (Previous/Next)
+Empty state ("No analyses yet")
+Loading skeleton
+Create app/history/page.tsx:
+Client component with useState for data
+Fetch from /api/history on mount
+Handle loading/error states
+Display HistoryList component
+Update components/auth/UserMenu.tsx to add "History" link
+Update app/layout.tsx navigation to include history link (authenticated users only)
+Key Features
+Pagination: Default 20 items per page, maximum 100 to prevent abuse
+JSONB Storage: Full AnalysisResult stored as JSON for flexibility
+Optimized Queries: Indexes on userId + createdAt DESC and repoFullName
+Empty States: Graceful UI for users with no analyses
+Responsive Design: Mobile-first approach with Tailwind CSS
+Critical Files Reference
+Phase 2.1 (OAuth)
+prisma/schema.prisma - Database foundation; all features depend on correct data model
+lib/auth/index.ts - NextAuth.js config; handles OAuth flow and session management
+lib/auth/encryption.ts - Token security; critical for protecting user credentials
+lib/auth/github-client.ts - Per-user GitHub access; enables private repo analysis
+app/api/analyze/route.ts - Core API modification; integrates auth with existing flow
+Phase 2.2 (History)
+app/api/history/route.ts - History API endpoint with pagination
+app/history/page.tsx - History UI page
+components/history/HistoryList.tsx - Paginated list component
+components/history/AnalysisCard.tsx - Individual analysis card
+Verification & Testing
+Phase 2.1 Verification
+Database Setup:
+
+
+# Verify database connection
+npx prisma studio
+
+# Check migrations
+npx prisma migrate status
+Token Encryption Test:
+
+
+node -e "
+const { encryptToken, decryptToken } = require('./lib/auth/encryption.ts');
+const test = 'gho_test_token_1234567890';
+const enc = encryptToken(test);
+const dec = decryptToken(enc);
+console.log('Encryption works:', test === dec);
+"
+OAuth Flow Test (Manual):
+
+Start dev server: npm run dev
+Navigate to http://localhost:3000
+Click "Sign in with GitHub"
+Authorize the app
+Verify in Prisma Studio:
+User record exists
+githubTokenEncrypted field is populated
+Session record exists
+Private Repo Test:
+
+Sign in with GitHub
+Analyze a private repository URL
+Verify analysis completes successfully
+Sign out
+Try analyzing same private repo
+Verify it fails with "Repository not found" (confirms token-based access)
+Phase 2.2 Verification
+Database Save Test:
+
+Sign in
+Analyze 3-5 public repositories
+Check Prisma Studio for Analysis records
+Verify result JSONB field contains full AnalysisResult
+History API Test:
+
+
+# With session cookie
+curl -X GET http://localhost:3000/api/history?page=1&limit=20 \
+  -H "Cookie: next-auth.session-token=<your-session-token>"
+History UI Test (Manual):
+
+Analyze 5+ repositories (to test pagination)
+Navigate to /history
+Verify all analyses appear in reverse chronological order
+Test pagination controls (if > 20 analyses)
+Click on an analysis to view details
+Sign out and verify /history redirects to home
+Anonymous Flow Test:
+
+Sign out completely
+Analyze a public repository (e.g., facebook/react)
+Verify analysis works without authentication
+Verify no database save occurs (check Prisma Studio)
+Verify "Sign in to analyze private repos" CTA appears
+Performance Considerations
+Database Indexes
+userId + createdAt DESC: Optimizes history queries
+email, githubId: Fast auth lookups
+repoFullName: Enables future "duplicate detection" feature
+Connection Pooling
+Prisma handles automatically
+Supabase supports up to 60 connections on free tier
+Connection pooling configured in DATABASE_URL (use ?pgbouncer=true)
+Pagination Strategy
+Default: 20 items per page
+Maximum: 100 items to prevent abuse
+Offset-based pagination (simple, suitable for current scale)
+Future: Cursor-based pagination for better performance at scale
+Migration from Phase 1
+Data Migration
+No data to migrate (Phase 1 has no persistence)
+All users start fresh with empty history
+Code Changes
+Backward compatible: Public repo analysis still works anonymously
+No breaking changes to AnalysisResult type
+GitHub API wrapper extended (not replaced) with optional parameters
+Existing analyze page UI remains functional
+User Experience
+Existing workflows unchanged for anonymous users
+New features are opt-in (must sign in to use)
+Clear CTAs guide users to authentication benefits
+Smooth OAuth flow with minimal friction
+Security Checklist
+ GitHub tokens encrypted with AES-256-GCM
+ Encryption key stored in environment (never in code)
+ Database sessions with 30-day expiration
+ CSRF protection enabled (NextAuth.js default)
+ OAuth scopes minimal (read:user user:email repo)
+ No token exposure in API responses
+ Protected API routes check session (auth())
+ Cascade deletes for GDPR compliance
+ Supabase connection string in environment only
+ Input validation with Zod schemas
+Success Metrics
+Technical Metrics
+OAuth flow success rate > 95%
+Private repo analysis success rate > 90%
+History page load time < 500ms
+Zero token leaks (manual security audit)
+User Experience Metrics
+Sign-in completion rate > 80%
+History page engagement (% of authenticated users who visit)
+Quality Metrics
+Type safety: 100% (no any types)
+Zero TypeScript errors
+Prisma migrations reversible
+No console errors in production build
+Rollback Plan
+If Database Issues Occur
+
+# Reset database to previous migration
+npx prisma migrate reset
+
+# Or rollback to specific migration
+npx prisma migrate resolve --rolled-back <migration-name>
+If OAuth Issues Occur
+Disable authentication checks temporarily
+Fallback to anonymous mode
+Add feature flag: ENABLE_AUTH=false in .env.local
+Feature Flag Implementation
+
+const AUTH_ENABLED = process.env.ENABLE_AUTH !== "false";
+
+if (!AUTH_ENABLED) {
+  // Use Phase 1 code paths
+  return getDefaultOctokit();
+}
+Next Steps After Phase 2
+Phase 3 Preparation
+Redis caching with Upstash (cache analysis results)
+RAG implementation with Pinecone/Supabase Vector
+Chat interface for codebase Q&A
+3D architecture visualization
+Phase 4 Preparation
+GitHub Actions CI/CD
+Vitest unit tests + Playwright E2E
+Sentry error monitoring
+Rate limiting per user
+Documentation Updates
+README.md
+Add new section:
+
+
+## Authentication (Phase 2)
+
+### Features
+- Analyze private repositories with GitHub OAuth
+- Save and revisit analysis history
+- Secure token storage with AES-256-GCM encryption
+
+### Setup
+1. Create Supabase project
+2. Create GitHub OAuth App
+3. Add credentials to `.env.local`
+4. Run `npx prisma migrate dev`
+5. Start the app: `npm run dev`
+CLAUDE.md
+Add Phase 2 architecture section with data flow diagrams for:
+
+OAuth authentication flow
+Per-user analysis flow with token decryption
+History retrieval flow
+Summary
+This plan provides a production-ready roadmap for Phase 2 implementation with:
+
+✅ Clear separation into two sequential stages
+
+Phase 2.1: OAuth + Private Repos (Weeks 1-3)
+Phase 2.2: Analysis History (Weeks 4-5)
+✅ Production-grade technology choices
+
+Prisma + Supabase for type-safe persistence
+NextAuth.js v5 for OAuth and session management
+AES-256-GCM encryption for token security
+✅ Backward compatibility maintained
+
+Anonymous users can still analyze public repos
+No breaking changes to existing APIs
+Graceful degradation without authentication
+✅ Security best practices
+
+Encrypted token storage
+Database sessions
+Minimal OAuth scopes
+CSRF protection
+✅ Quality standards for Big Tech recruiters
+
+Type safety throughout
+Clean architecture with separation of concerns
+Comprehensive verification strategy
+Production-ready error handling
+This phased approach allows for testing and validation at each stage while delivering immediate value with OAuth authentication before adding the convenience of analysis history.

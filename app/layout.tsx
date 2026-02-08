@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Ubuntu } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { Navigation } from "@/components/navigation/Navigation";
 
 const ubuntu = Ubuntu({
   weight: ["300", "400", "500", "700"],
@@ -10,7 +12,7 @@ const ubuntu = Ubuntu({
 
 export const metadata: Metadata = {
   title: "Codebase Narrator",
-  description: "Codebase Narrator",
+  description: "AI-powered GitHub repository analysis tool",
 };
 
 export default function RootLayout({
@@ -24,7 +26,10 @@ export default function RootLayout({
         className={`${ubuntu.variable} font-sans antialiased`}
         suppressHydrationWarning
       >
-        {children}
+        <AuthProvider>
+          <Navigation />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

@@ -7,11 +7,18 @@ import type { GitHubRepo, FileNode } from "./types";
  * 개념 설명:
  * - Octokit: GitHub의 공식 JavaScript SDK
  * - Personal Access Token을 사용하면 rate limit이 5000/hour로 증가 (미사용 시 60/hour)
- * - Phase 1에서는 public repo만 접근하므로 token 없이도 작동 가능
+ * - Phase 2: 사용자별 OAuth token으로 private repo 접근 가능
  */
-const octokit = new Octokit({
-    auth: process.env.GITHUB_TOKEN,
-});
+
+/**
+ * 기본 Octokit 클라이언트 생성 (fallback용)
+ * 익명 사용자의 경우 환경변수의 GITHUB_TOKEN 사용
+ */
+function getDefaultOctokit(): Octokit {
+    return new Octokit({
+        auth: process.env.GITHUB_TOKEN,
+    });
+}
 
 /**
  * GitHub URL에서 owner와 repo 이름 추출
@@ -53,9 +60,16 @@ export function parseGitHubUrl(url: string): { owner: string; repo: string } | n
  *
  * API 엔드포인트: GET /repos/{owner}/{repo}
  * 문서: https://docs.github.com/en/rest/repos/repos#get-a-repository
+ *
+ * @param octokit - Optional Octokit instance (uses user's OAuth token or default)
  */
-export async function getRepoInfo(owner: string, repo: string): Promise<GitHubRepo> {
-    const { data } = await octokit.rest.repos.get({
+export async function getRepoInfo(
+    owner: string,
+    repo: string,
+    octokit?: Octokit
+): Promise<GitHubRepo> {
+    const client = octokit || getDefaultOctokit();
+    const { data } = await client.rest.repos.get({
         owner,
         repo,
     });
@@ -81,15 +95,20 @@ export async function getRepoInfo(owner: string, repo: string): Promise<GitHubRe
  * 3. Filter for important files (config files, source code, etc.)
  *
  * API Endpoint: GET /repos/{owner}/{repo}/git/trees/{tree_sha}
+ *
+ * @param octokit - Optional Octokit instance (uses user's OAuth token or default)
  */
 export async function getRepoFileTree(
     owner: string,
     repo: string,
-    maxDepth: number = 5
+    maxDepth: number = 5,
+    octokit?: Octokit
 ): Promise<FileNode[]> {
     try {
+        const client = octokit || getDefaultOctokit();
+
         // 1. Get default branch info
-        const { data: repoData } = await octokit.rest.repos.get({
+        const { data: repoData } = await client.rest.repos.get({
             owner,
             repo,
         });
@@ -97,7 +116,7 @@ export async function getRepoFileTree(
         const defaultBranch = repoData.default_branch;
 
         // 2. Get file list using Git Tree API
-        const { data: treeData } = await octokit.rest.git.getTree({
+        const { data: treeData } = await client.rest.git.getTree({
             owner,
             repo,
             tree_sha: defaultBranch,
@@ -270,14 +289,18 @@ export async function getRepoFileTree(
  * 주의사항:
  * - 파일 크기가 1MB 이상이면 content가 null로 반환됨
  * - base64 인코딩된 상태로 반환되므로 디코딩 필요
+ *
+ * @param octokit - Optional Octokit instance (uses user's OAuth token or default)
  */
 export async function getFileContent(
     owner: string,
     repo: string,
-    path: string
+    path: string,
+    octokit?: Octokit
 ): Promise<string | null> {
     try {
-        const { data } = await octokit.rest.repos.getContent({
+        const client = octokit || getDefaultOctokit();
+        const { data } = await client.rest.repos.getContent({
             owner,
             repo,
             path,
@@ -309,11 +332,14 @@ export async function getFileContent(
  * - Promise.all을 사용해서 병렬 처리
  * - Rate limit을 고려해서 한 번에 최대 10개씩만 요청
  * - 우선순위 정렬: 핵심 파일(entry points, config)을 먼저 가져옴
+ *
+ * @param octokit - Optional Octokit instance (uses user's OAuth token or default)
  */
 export async function getMultipleFileContents(
     owner: string,
     repo: string,
-    paths: string[]
+    paths: string[],
+    octokit?: Octokit
 ): Promise<Array<{ path: string; content: string | null }>> {
     const BATCH_SIZE = 10;
     const results: Array<{ path: string; content: string | null }> = [];
@@ -327,7 +353,7 @@ export async function getMultipleFileContents(
         const batchResults = await Promise.all(
             batch.map(async (path) => ({
                 path,
-                content: await getFileContent(owner, repo, path),
+                content: await getFileContent(owner, repo, path, octokit),
             }))
         );
         results.push(...batchResults);
