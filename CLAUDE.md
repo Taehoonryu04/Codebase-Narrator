@@ -2,7 +2,29 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 2 (In Progress) - GitHub OAuth, user authentication, analysis history with Supabase/Prisma.
+**Current Phase:** Phase 3 (In Progress) - RAG with Supabase Vector, AI chat interface, user rate limiting.
+
+**🔒 Claude Code Usage Rules** (Efficiency & Control)
+
+- Language: Use English only.
+- Style: Short, direct, technical language. No greetings, filler, or emojis.
+- Smart Exploration:
+    - Do NOT scan the entire project by default.
+    - Based on the goal, infer which files are likely relevant and explore only those.
+    - If the initial inference is insufficient, explore additional files incrementally.
+- Planning & Implementation Strategy:
+    - For **new major features or architectural changes**: Provide a Plan first and wait for my "implement" or "go ahead" command.
+    - For **debugging, minor tweaks, or follow-up tasks**: Implement immediately. **Do NOT explain or list plans**—focus strictly on delivering the code to save tokens.
+    - If uncertain whether a task is "major," ask before implementing.
+- Response Format:
+    - Focus on Problem → Inference → Plan/Code.
+    - Explain what and where, not why, unless asked.
+    - Use "diff" format for code changes to minimize token output.
+- Development Philosophy:
+    - Treat existing code as correct unless it directly blocks the implementation of the requested feature or a bug is explicitly reported.
+    - Do not refactor or "improve" unrelated code.
+    - Treat multiple features as independent.
+- Action Guidance: Clearly and concisely state any required user actions (e.g., "Run npm install").
 
 ## Quick Start
 
@@ -29,6 +51,9 @@ GITHUB_CLIENT_ID=xxx                   # GitHub OAuth app credentials
 GITHUB_CLIENT_SECRET=xxx
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
+
+# Phase 3: RAG & Chat
+SUPABASE_SERVICE_ROLE_KEY=xxx          # For server-side vector operations
 ```
 
 ## Tech Stack
@@ -47,11 +72,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 
 ```
 lib/
-├── ai/gemini.ts          # AI integration with structured prompts
+├── ai/
+│   ├── gemini.ts         # AI integration with structured prompts
+│   ├── embeddings.ts     # Gemini embedding generation (Phase 3)
+│   └── rag.ts            # RAG pipeline: chunk, embed, retrieve (Phase 3)
 ├── auth/                 # NextAuth configuration
 ├── db/                   # Prisma client
 ├── supabase/            # Supabase client (server/client)
 ├── github.ts            # GitHub API wrapper
+├── rate-limit.ts        # Per-user rate limiting logic (Phase 3)
 ├── validation.ts        # Zod schemas
 └── types/               # Shared TypeScript types
 
@@ -60,10 +89,13 @@ app/
 ├── analyze/page.tsx     # Analysis page
 ├── auth/                # Auth callback pages
 ├── history/page.tsx     # User analysis history
+├── chat/page.tsx        # Codebase chat interface (Phase 3)
 └── api/
     ├── analyze/         # Repository analysis endpoint
     ├── auth/            # NextAuth routes
-    └── history/         # User history CRUD
+    ├── history/         # User history CRUD
+    ├── chat/            # RAG-powered chat endpoint (Phase 3)
+    └── rate-limit/      # Rate limit status endpoint (Phase 3)
 
 components/
 ├── analyze/             # Analysis feature components
@@ -104,6 +136,7 @@ User         # NextAuth users (GitHub OAuth)
 Account      # OAuth accounts
 Session      # User sessions
 Analysis     # User's analysis history (userId + repoFullName unique)
+RateLimit    # Per-user rate limit counters (analysisCount, chatCount, windowStart)
 ```
 
 Run `npx prisma migrate dev` after schema changes.
@@ -121,6 +154,21 @@ Run `npx prisma migrate dev` after schema changes.
 - Structured JSON prompt with repo metadata, file structure, contents
 - May wrap JSON in markdown code blocks (regex handles both formats)
 - Free tier: monitor usage at https://ai.dev/rate-limit
+
+**RAG & Vector Search (Phase 3):**
+- Enable `pgvector` extension in Supabase for embeddings
+- Chunk file contents (max ~500 tokens/chunk) with metadata (file path, repo, userId)
+- Use Gemini `text-embedding-004` model for embeddings (768 dimensions)
+- Store vectors in `code_embeddings` table in Supabase
+- At chat time: embed user query → similarity search → inject top-k chunks as context
+- Delete embeddings when analysis is deleted (cascade)
+
+**Rate Limiting (Phase 3):**
+- `RateLimit` table: one row per user, 24-hour rolling window
+- Limits: 5 analyses/day, 50 chat messages/day
+- `checkAndIncrementAnalysis` / `checkAndIncrementChat` in `lib/rate-limit.ts`
+- Return 429 with `Retry-After` header; analysis enforced in `POST /api/analyze`
+- `GET /api/rate-limit` returns read-only status for frontend display
 
 **Next.js:**
 - Server logs in terminal, client logs in browser console
@@ -162,27 +210,24 @@ Run `npx prisma migrate dev` after schema changes.
 - Gemini AI integration
 - Landing page + analyze page
 
-### Phase 2: User Features 🚧 (Current)
+### Phase 2: User Features ✅
 - GitHub OAuth (NextAuth.js)
 - User authentication
 - Analysis history (Supabase + Prisma)
 - Private repo support
 
-### Phase 3: Advanced Features (Planned)
+### Phase 3: Intelligence 🚧 (Current)
+- RAG with Supabase Vector (embed codebase chunks, store in pgvector)
+- Chat interface for codebase Q&A (context-aware AI responses)
+- ✅ User rate limiting (per-user analysis + chat request limits)
+  - TODO: set RATE_LIMITS to `analysis: 5, chat: 50` in `lib/rate-limit.ts` before production
+
+### Phase 4: Advanced Features (Planned)
 - Interactive file tree visualization
 - React Flow dependency graphs
-- Redis caching (Upstash)
-
-### Phase 4: Intelligence (Future)
-- RAG with Supabase Vector
-- Chat interface for codebase Q&A
-- 3D architecture visualization
-
-### Phase 5: Production (Future)
 - CI/CD (GitHub Actions)
 - Testing (Vitest + Playwright)
 - Monitoring (Sentry)
-- Rate limiting
 
 ## Quality Bar
 

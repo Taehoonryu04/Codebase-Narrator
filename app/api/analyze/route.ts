@@ -12,6 +12,7 @@ import type { AnalysisResult } from "@/lib/types";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db/prisma";
 import { Octokit } from "@octokit/rest";
+import { checkAndIncrementAnalysis, windowLabel } from "@/lib/rate-limit";
 
 /**
  * POST /api/analyze
@@ -64,6 +65,26 @@ export async function POST(request: NextRequest) {
             }
         } catch (error) {
             console.warn("⚠️ Failed to get user session, continuing with default token:", error);
+        }
+
+        // Step 2b: Enforce rate limit (authenticated users only)
+        if (authenticatedUserId) {
+            const rateLimit = await checkAndIncrementAnalysis(authenticatedUserId);
+            if (!rateLimit.allowed) {
+                const retryAfterSecs = Math.ceil((rateLimit.resetAt.getTime() - Date.now()) / 1000);
+                console.log(`🚫 Rate limit exceeded for user ${authenticatedUserId}`);
+                return NextResponse.json(
+                    {
+                        error: `Analysis limit reached (${rateLimit.limit}/${windowLabel()}). Resets at ${rateLimit.resetAt.toLocaleString()}.`,
+                        resetAt: rateLimit.resetAt.toISOString(),
+                    },
+                    {
+                        status: 429,
+                        headers: { "Retry-After": String(retryAfterSecs) },
+                    }
+                );
+            }
+            console.log(`📊 Rate limit: ${rateLimit.current}/${rateLimit.limit} analyses today`);
         }
 
         // Step 3: Parse GitHub URL

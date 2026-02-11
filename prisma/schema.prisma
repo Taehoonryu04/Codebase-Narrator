@@ -76,6 +76,20 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// Phase 3: Per-user rate limiting
+// userId references Supabase Auth user (not Prisma User table)
+// One row per user; window resets every 24 hours
+model RateLimit {
+  id            String   @id @default(cuid())
+  userId        String   @unique // Supabase Auth user ID
+  analysisCount Int      @default(0)
+  chatCount     Int      @default(0)
+  windowStart   DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
+
 // Phase 2.2: Analysis History
 // Stores user's past analysis results
 // userId references Supabase Auth user (not Prisma User table)
