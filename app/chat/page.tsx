@@ -391,7 +391,7 @@ export default function ChatPage() {
                         </AnimatePresence>
 
                         {/* Input */}
-                        <div className="relative z-10 border-t border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-sm px-4 py-4 shrink-0">
+                        <div className="relative z-10 px-4 py-4 shrink-0">
                             <div className="max-w-3xl mx-auto flex gap-3 items-end">
                                 <textarea
                                     ref={inputRef}
