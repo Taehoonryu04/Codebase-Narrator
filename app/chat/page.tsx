@@ -151,10 +151,10 @@ export default function ChatPage() {
                 <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 min-w-0">
                         <Link
-                            href="/history"
+                            href="/"
                             className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors shrink-0"
                         >
-                            &larr; History
+                            &larr; Home
                         </Link>
                         <div className="min-w-0">
                             <h1 className="text-xl font-bold text-neutral-900 dark:text-white truncate">
