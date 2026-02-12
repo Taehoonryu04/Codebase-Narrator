@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 3 (In Progress) - RAG with Supabase Vector, AI chat interface, user rate limiting.
+**Current Phase:** Phase 3 ✅ COMPLETE — Phase 4 is next.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -73,36 +73,38 @@ SUPABASE_SERVICE_ROLE_KEY=xxx          # For server-side vector operations
 ```
 lib/
 ├── ai/
-│   ├── gemini.ts         # AI integration with structured prompts
-│   ├── embeddings.ts     # Gemini embedding generation (Phase 3)
-│   └── rag.ts            # RAG pipeline: chunk, embed, retrieve (Phase 3)
+│   ├── gemini.ts         # AI integration
+│   ├── embeddings.ts     # Gemini embedding generation
+│   └── rag.ts            # RAG pipeline: chunk, embed, retrieve
 ├── auth/                 # NextAuth configuration
 ├── db/                   # Prisma client
-├── supabase/            # Supabase client (server/client)
-├── github.ts            # GitHub API wrapper
-├── rate-limit.ts        # Per-user rate limiting logic (Phase 3)
-├── validation.ts        # Zod schemas
-└── types/               # Shared TypeScript types
+├── supabase/             # Supabase client (server/client)
+├── github.ts             # GitHub API wrapper
+├── rate-limit.ts         # Per-user rate limiting
+├── validation.ts         # Zod schemas
+└── types/                # Shared TypeScript types
 
 app/
-├── page.tsx             # Landing page
-├── analyze/page.tsx     # Analysis page
-├── auth/                # Auth callback pages
-├── history/page.tsx     # User analysis history
-├── chat/page.tsx        # Codebase chat interface (Phase 3)
+├── page.tsx              # Landing page
+├── analyze/page.tsx      # Analysis page
+├── auth/                 # Auth callback pages
+├── history/page.tsx      # User analysis history
+├── chat/page.tsx         # Codebase chat interface
 └── api/
-    ├── analyze/         # Repository analysis endpoint
-    ├── auth/            # NextAuth routes
-    ├── history/         # User history CRUD
-    ├── chat/            # RAG-powered chat endpoint (Phase 3)
-    └── rate-limit/      # Rate limit status endpoint (Phase 3)
+    ├── analyze/          # Repository analysis endpoint
+    ├── auth/             # NextAuth routes
+    ├── history/          # User history CRUD
+    ├── chat/route.ts     # RAG-powered chat — POST /api/chat
+    └── rate-limit/       # Rate limit status endpoint
 
 components/
-├── analyze/             # Analysis feature components
-├── auth/                # Auth UI components
-├── history/             # History UI components
-├── navigation/          # Nav components
-└── main/                # Landing page components
+├── analyze/              # Analysis feature components
+├── auth/                 # Auth UI components
+├── history/              # History UI components
+├── navigation/           # Nav (History + Chat links for authed users)
+└── main/
+    ├── hero.tsx          # Full-viewport hero with FloatingPaths background
+    └── landing-sections.tsx  # Scroll-animated landing sections
 ```
 
 ### Key Design Patterns
@@ -179,61 +181,52 @@ Run `npx prisma migrate dev` after schema changes.
 **Next.js:**
 - Server logs in terminal, client logs in browser console
 - API routes are server-only (no `window`, `localStorage`)
-- Hot reload auto-refreshes on changes
+
+**Chat API (Phase 3):**
+- `POST /api/chat` in `app/api/chat/route.ts`
+- Flow: auth check → Zod validate (`chatRequestSchema`) → `checkAndIncrementChat` (429 if over limit) → `searchSimilarChunks(userId, repoFullName, message, 8)` → `buildRagContext(chunks)` → Gemini `generateContent` with system prompt + history + user message → return `{ reply: string, sources: string[] }`
+- Conversation history passed as `history: [{role, content}][]` in request body (max 50 turns)
+- If no embeddings found for repo → returns plain message asking user to run analysis first
+- Requires authentication (401 if unauthenticated — embeddings are user-scoped)
+
+**Layout Architecture:**
+- `app/layout.tsx`: `<html className="h-full">` + `<body className="h-full flex flex-col">` + `<div className="flex-1 overflow-auto min-h-0">` wrapping `{children}`
+- This lets chat page use `h-full flex flex-col overflow-hidden` for fixed viewport layout
+- Other pages (history, analyze) scroll normally within the overflow-auto wrapper
+
+**Chat Page (`app/chat/page.tsx`):**
+- Fixed viewport layout — messages scroll internally, input bar always visible at bottom
+- URL param: `?repo=owner/repo` pre-selects a repository; falls back to selector from history
+- Repo selector shown in header when user has multiple analyzed repos
+- Typing indicator (3-dot bounce animation) while waiting for response
+- Source chips displayed below each AI message (unique file paths from RAG chunks)
+- Rate limit display: remaining chat messages today (from `GET /api/rate-limit`)
+
+**Landing Page (`app/page.tsx`):**
+- `<Hero>` (full-viewport, FloatingPaths background, letter-by-letter animation)
+- `<LandingSections>` (`components/main/landing-sections.tsx`) — 6 scroll-reveal sections: access tiers, how it works, stats bar, chat preview, analysis outputs, CTA/footer
+- All sections use `useInView` with `once: true` — fade/slide up on scroll
 
 **Component Patterns:**
 - File references use markdown links: `[file.ts:42](src/file.ts#L42)`
 - Emoji prefixes in logs: 📥 🔍 ✅ ❌
 - Tailwind v4 with dark mode, glassmorphism effects
 - Framer Motion for animations (use sparingly)
+- `Reveal` wrapper component in `landing-sections.tsx` for scroll-triggered animations
 
 ## Development Workflow
 
-1. **Starting new features:**
-   - Read relevant files first (understand before modifying)
-   - Check CLAUDE.md for patterns
-   - Prefer editing existing files over creating new ones
-
-2. **API Routes:**
-   - Validate input with Zod first
-   - Log progress with emoji prefixes
-   - Return typed responses with NextResponse.json()
-
-3. **Styling:**
-   - Mobile-first responsive design
-   - Use existing Tailwind classes
-   - Avoid over-engineering
-
-4. **Git commits:**
-   - Only commit when explicitly requested
-   - Never skip hooks or force push to main
-   - Stage specific files (avoid `git add -A`)
+- Prefer editing existing files over creating new ones
+- API routes: validate with Zod first, log with emoji prefixes, return typed `NextResponse.json()`
+- Styling: mobile-first, use existing Tailwind classes
+- Git: only commit when asked, stage specific files (avoid `git add -A`), never skip hooks or force push to main
 
 ## Phase Roadmap
 
-### Phase 1: MVP ✅
-- Public repo analysis
-- Gemini AI integration
-- Landing page + analyze page
+**Completed:** Phase 1 (MVP), Phase 2 (Auth + History), Phase 3 (RAG + Chat + Rate limiting)
+- TODO: set RATE_LIMITS to `analysis: 5, chat: 50` in `lib/rate-limit.ts` before production (currently 9999 for dev)
 
-### Phase 2: User Features ✅
-- GitHub OAuth (NextAuth.js)
-- User authentication
-- Analysis history (Supabase + Prisma)
-- Private repo support
-
-### Phase 3: Intelligence 🚧 (Current)
-- ✅ User rate limiting (per-user analysis + chat request limits)
-  - TODO: set RATE_LIMITS to `analysis: 5, chat: 50` in `lib/rate-limit.ts` before production
-- ✅ RAG pipeline (`lib/ai/embeddings.ts`, `lib/ai/rag.ts`)
-  - Chunks file contents, embeds with `gemini-embedding-001` (768-dim), stores in Supabase `code_embeddings`
-  - Triggered fire-and-forget after every analysis (authenticated users only)
-  - Similarity search via `match_code_chunks` RPC
-- 🚧 Chat interface for codebase Q&A — NOT YET STARTED
-  - Next: implement `POST /api/chat` (RAG retrieval + Gemini response)
-  - Then: implement `app/chat/page.tsx` (chat UI)
-
-### Phase 4: Advanced Features (Planned)
+### Phase 4: Advanced Features (Next)
 - Interactive file tree visualization
 - React Flow dependency graphs
 - CI/CD (GitHub Actions)
