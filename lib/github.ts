@@ -101,7 +101,7 @@ export async function getRepoInfo(
 export async function getRepoFileTree(
     owner: string,
     repo: string,
-    maxDepth: number = 5,
+    maxDepth: number = 10,
     octokit?: Octokit
 ): Promise<FileNode[]> {
     try {
@@ -257,6 +257,7 @@ export async function getRepoFileTree(
                     /\.(yaml|yml|toml|ini|cfg)$/,
                     /\.(sql|graphql|proto|prisma)$/,
                     /\.md$/i, // Markdown files
+                    /\.xml$/, // Android layouts, Maven pom, Spring config, etc.
                 ];
 
                 const matches = importantPatterns.some((pattern) => pattern.test(path));
@@ -272,8 +273,12 @@ export async function getRepoFileTree(
                 size: item.size,
             }));
 
+        // Adaptive sort: highest-value source files first, so slice(0, maxFiles) picks them
+        const primaryLanguage = repoData.language;
+        importantFiles.sort((a, b) => scoreFile(a.path, primaryLanguage) - scoreFile(b.path, primaryLanguage));
+
         console.log(`✅ Found ${importantFiles.length} important files`);
-        console.log(`📋 Sample files: ${importantFiles.slice(0, 10).map(f => f.path).join(", ")}`);
+        console.log(`📋 Top files (adaptive): ${importantFiles.slice(0, 10).map(f => f.path).join(", ")}`);
         return importantFiles;
     } catch (error) {
         console.error("Error fetching file tree:", error);
@@ -363,23 +368,99 @@ export async function getMultipleFileContents(
 }
 
 /**
- * 파일 경로 우선순위 정렬
+ * Adaptive file scorer — assigns a priority score to each file path.
+ * Lower score = higher priority = fetched first within the maxFiles budget.
  *
- * 핵심 파일을 먼저 분석해 토큰 한도 내에서 최대한의 인사이트를 확보.
- * Tier 0: Entry points & config (package.json, main, index 등)
- * Tier 1: Source code (lib/, src/, app/ 내부)
- * Tier 2: Tests, docs, 기타
+ * Tiers (first matching rule wins):
+ *  90  — Generated/compiled (.d.ts, .min.js, migrations/, .next/ subdirs)
+ *  70  — Test files (*.test.*, *.spec.*, __tests__/, test/ dirs)
+ *  60  — Docs (.md, .txt, .rst)
+ *   5  — Root-level key manifests (package.json, go.mod, Cargo.toml, …)
+ *  10+depth — Entry points (main.*, index.*, app.*, server.* at depth ≤ 3)
+ *  20+depth — Files inside core source dirs (src/, lib/, app/, pkg/, …)
+ *  25  — Root-level source files matching primary language
+ *  40  — Other config/data files (.json, .yaml, .toml, …)
+ *  50+depth×2 — Everything else
+ *
+ * Primary language bonus: −5 if file extension matches repo's primary language.
+ */
+function scoreFile(path: string, primaryLanguage: string | null | undefined): number {
+    const parts = path.split("/");
+    const filename = parts[parts.length - 1];
+    const depth = parts.length;
+
+    // Generated / compiled — push to end
+    if (/\/(migrations?|generated?|\.next)\//i.test("/" + path)) return 90;
+    if (/\.(d\.ts|min\.js|min\.css|js\.map)$/.test(filename)) return 90;
+
+    // Test files — catches both root-level test/ dirs and mid-path variants (e.g. app/src/test/..., androidTest/)
+    if (/\.(test|spec|e2e)\.[^.]+$/.test(filename)) return 70;
+    if (/(^|\/)(tests?|__tests__|specs?|androidTest)\//i.test(path)) return 70;
+
+    // Docs
+    if (/\.(md|txt|rst)$/i.test(filename)) return 60;
+
+    // Root-level key manifests
+    if (
+        depth === 1 &&
+        /^(package\.json|go\.mod|Cargo\.toml|pyproject\.toml|requirements\.txt|pom\.xml|build\.gradle|Gemfile|composer\.json)$/.test(filename)
+    ) return 5;
+
+    // Entry points (shallow depth only)
+    if (depth <= 3 && /^(main|index|app|server|mod)\.[^.]+$/.test(filename)) return 10 + depth;
+
+    // Core source directories
+    const inSrcDir = /^(src|lib|app|pkg|internal|core|api|server|backend|frontend|pages|routes|handlers?|controllers?)\//i.test(path);
+    if (inSrcDir) {
+        const base = 20 + depth;
+        // Language bonus inside src dirs
+        const langBonus = matchesLanguage(filename, primaryLanguage) ? -5 : 0;
+        return base + langBonus;
+    }
+
+    // Root-level source files
+    if (depth === 1 && matchesLanguage(filename, primaryLanguage)) return 25;
+
+    // UI resource files (Android layouts, iOS storyboards, etc.) — ahead of generic config
+    if (/\/(res\/layout|res\/menu|res\/navigation|res\/drawable)\//i.test("/" + path) && /\.xml$/.test(filename)) return 30;
+
+    // Other config/data files
+    if (/\.(json|jsonc|yaml|yml|toml|ini|cfg|env\.example|prisma|graphql|proto|sql)$/.test(filename)) return 40;
+    // Generic XML (pom.xml siblings, Spring config, etc.) — behind config, ahead of docs
+    if (/\.xml$/.test(filename)) return 45;
+
+    return 50 + depth * 2;
+}
+
+/** Returns true if the filename's extension matches the repo's primary language. */
+function matchesLanguage(filename: string, primaryLanguage: string | null | undefined): boolean {
+    if (!primaryLanguage) return false;
+    const lang = primaryLanguage.toLowerCase();
+    const extMap: Record<string, RegExp> = {
+        typescript: /\.(ts|tsx)$/,
+        javascript: /\.(js|jsx|mjs|cjs)$/,
+        python: /\.py$/,
+        go: /\.go$/,
+        rust: /\.rs$/,
+        java: /\.java$/,
+        kotlin: /\.(kt|kts)$/,
+        ruby: /\.rb$/,
+        php: /\.php$/,
+        "c#": /\.cs$/,
+        "c++": /\.(cpp|cc|cxx|hpp|hxx)$/,
+        c: /\.(c|h)$/,
+        swift: /\.swift$/,
+        scala: /\.(scala|sc)$/,
+    };
+    return extMap[lang]?.test(filename) ?? false;
+}
+
+/**
+ * 파일 경로 우선순위 정렬 (legacy — inputs are already sorted by scoreFile)
+ * Kept for getMultipleFileContents compatibility; returns paths unchanged.
  */
 function prioritizePaths(paths: string[]): string[] {
-    const tier0 = /^(package\.json|README\.md|tsconfig.*\.json|next\.config|vite\.config|Cargo\.toml|go\.mod|pyproject\.toml|Dockerfile|docker-compose)/i;
-    const tier1Entry = /^(src|lib|app|pages|server|core|internal|cmd|pkg)\//i;
-    const tier2 = /\.(test|spec|stories|e2e)\./i;
-
-    return [...paths].sort((a, b) => {
-        const scoreA = tier0.test(a) ? 0 : tier2.test(a) ? 2 : tier1Entry.test(a) ? 1 : 1.5;
-        const scoreB = tier0.test(b) ? 0 : tier2.test(b) ? 2 : tier1Entry.test(b) ? 1 : 1.5;
-        return scoreA - scoreB;
-    });
+    return paths;
 }
 
 /**

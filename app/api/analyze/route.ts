@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
         // Step 5: Recursive file tree (single API call via Git Tree API)
         console.log("🌳 Fetching recursive file tree...");
-        const fileStructure = await getRepoFileTree(owner, repo, 5, userOctokit);
+        const fileStructure = await getRepoFileTree(owner, repo, 10, userOctokit);
         console.log(`✅ ${fileStructure.length} important files detected`);
 
         if (fileStructure.length < 3) {

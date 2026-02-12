@@ -123,10 +123,11 @@ POST /api/analyze
   ↓
 1. Parse GitHub URL (owner/repo)
 2. Fetch repo metadata + file tree (Git Tree API, recursive)
-3. Filter files (max depth 5, exclude node_modules/dist/.next/etc)
-4. Fetch file contents (batched: 20 files, 5 concurrent)
-5. Send to Gemini with structured prompt
-6. Parse JSON response
+3. Filter files (max depth 10, exclude node_modules/dist/.next/etc)
+4. Adaptive score + sort ALL files before slicing to maxFiles budget
+5. Fetch file contents (batched: 20 files, priority-sorted)
+6. Send to Gemini with structured prompt
+7. Parse JSON response
   ↓
 Return AnalysisResult → Display with animations
 ```
@@ -227,7 +228,13 @@ Run `npx prisma migrate dev` after schema changes.
 - TODO: set RATE_LIMITS to `analysis: 5, chat: 50` in `lib/rate-limit.ts` before production (currently 9999 for dev)
 
 ### Phase 4: Engine Refinement (Current)
-- [ ] **Adaptive Scanner**: Dynamic file priority based on project structure (Fix over-filtering).
+- [x] **Adaptive Scanner**: ✅ DONE — `lib/github.ts`
+  - `scoreFile(path, primaryLanguage)` scores every file before the `maxFiles` slice
+  - Tiers: manifests(5) → entry points(10+depth) → src dirs(20+depth) → UI resources(30) → config(40) → XML(45) → fallback(50+depth×2) → docs(60) → tests(70) → generated(90)
+  - Language bonus: −5 for files matching repo's primary language inside src dirs
+  - `maxDepth` raised from 5 → 10 (fixes Java/Android deep package paths, e.g. depth 8)
+  - Mid-path test dirs caught: `/(^|\/)tests?|__tests__|specs?|androidTest\//` (was only catching root-level)
+  - `.xml` added to filter + scored (layout/30, generic/45) — fixes Android res/layout, Maven, Spring
 - [ ] **Hybrid Search**: Implement Keyword + Vector search for 2x better retrieval accuracy.
 - [ ] **Chat Streaming**: Implementation of SSE (Server-Sent Events) for real-time chat UX.
 

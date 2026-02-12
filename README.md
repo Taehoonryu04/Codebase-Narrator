@@ -38,10 +38,12 @@ User Input (GitHub URL)
   → Zod Validation
   → POST /api/analyze
       1. Parse owner/repo from URL
-      2. Fetch repo metadata + full file tree (Git Tree API, recursive)
-      3. Filter files (max depth 5, exclude node_modules/dist/.next)
-      4. Fetch file contents (batched: 20 files, 5 concurrent)
-      5. Truncate to 500 lines/file → send to Gemini with structured prompt
+      2. Fetch repo metadata + full file tree (Git Tree API, recursive, max depth 10)
+      3. Filter files (exclude node_modules/dist/.next/binary/lock files)
+      4. Adaptive score + sort all files before slicing to maxFiles budget
+         (manifests → entry points → src dirs → UI resources → config → docs → tests → generated)
+      5. Fetch file contents (batched, priority-sorted)
+      6. Truncate to 600 lines/file → send to Gemini with structured prompt
       6. Parse JSON response → return AnalysisResult
       7. Store embeddings fire-and-forget (authenticated users)
           → chunk files (~2000 chars, 200-char overlap)
@@ -147,7 +149,7 @@ npm run dev              # http://localhost:3000
 - Phase 3: RAG + Chat + Rate Limiting (pgvector, embeddings, chat API)
 
 **In Progress — Phase 4: Engine Refinement**
-- [ ] Adaptive Scanner — dynamic file priority based on project type
+- [x] Adaptive Scanner — tiered file scoring with language-aware prioritization, deep-path support (depth 10), and XML/resource file handling
 - [ ] Hybrid Search — keyword + vector search for better retrieval
 - [ ] Chat Streaming — SSE for real-time response UX
 
