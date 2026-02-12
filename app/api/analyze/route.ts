@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db/prisma";
 import { Octokit } from "@octokit/rest";
 import { checkAndIncrementAnalysis, windowLabel } from "@/lib/rate-limit";
+import { storeEmbeddings } from "@/lib/ai/rag";
 
 /**
  * POST /api/analyze
@@ -145,7 +146,14 @@ export async function POST(request: NextRequest) {
 
         console.log(`🎉 Analysis complete! ${loadedCount} files analyzed out of ${fileStructure.length} total`);
 
-        // Step 10: Save to history (authenticated users only)
+        // Step 10: Store embeddings for RAG (authenticated users only, fire-and-forget)
+        if (authenticatedUserId) {
+            storeEmbeddings(authenticatedUserId, repoInfo.fullName, fileContents).catch((err) => {
+                console.error("⚠️ Embedding storage failed (non-blocking):", err);
+            });
+        }
+
+        // Step 11: Save to history (authenticated users only)
         if (authenticatedUserId) {
             try {
                 await prisma.analysis.upsert({

@@ -156,12 +156,16 @@ Run `npx prisma migrate dev` after schema changes.
 - Free tier: monitor usage at https://ai.dev/rate-limit
 
 **RAG & Vector Search (Phase 3):**
-- Enable `pgvector` extension in Supabase for embeddings
-- Chunk file contents (max ~500 tokens/chunk) with metadata (file path, repo, userId)
-- Use Gemini `text-embedding-004` model for embeddings (768 dimensions)
-- Store vectors in `code_embeddings` table in Supabase
-- At chat time: embed user query → similarity search → inject top-k chunks as context
-- Delete embeddings when analysis is deleted (cascade)
+- `pgvector` extension enabled in Supabase
+- Chunk file contents (~2000 chars with 200-char overlap) → `lib/ai/rag.ts:chunkFile()`
+- Embedding model: `gemini-embedding-001` with `outputDimensionality: 768` (MRL truncation) → `lib/ai/embeddings.ts`
+  - NOTE: `text-embedding-004` is deprecated (404). Use `gemini-embedding-001` only.
+  - NOTE: Do NOT use `apiVersion: "v1"` — default v1beta works for this model.
+- `code_embeddings` table in Supabase: `vector(768)`, `hnsw` index (ivfflat also works at 768 dims)
+- Similarity search via Supabase RPC `match_code_chunks(query_embedding, match_user_id, match_repo, match_count)`
+- Embeddings stored fire-and-forget after analysis in `POST /api/analyze` (step 10, authenticated users only)
+- At chat time: embed user query → `searchSimilarChunks()` → `buildRagContext()` → inject top-k chunks as context
+- Delete embeddings when analysis is deleted (cascade — not yet implemented)
 
 **Rate Limiting (Phase 3):**
 - `RateLimit` table: one row per user, 24-hour rolling window
@@ -217,10 +221,15 @@ Run `npx prisma migrate dev` after schema changes.
 - Private repo support
 
 ### Phase 3: Intelligence 🚧 (Current)
-- RAG with Supabase Vector (embed codebase chunks, store in pgvector)
-- Chat interface for codebase Q&A (context-aware AI responses)
 - ✅ User rate limiting (per-user analysis + chat request limits)
   - TODO: set RATE_LIMITS to `analysis: 5, chat: 50` in `lib/rate-limit.ts` before production
+- ✅ RAG pipeline (`lib/ai/embeddings.ts`, `lib/ai/rag.ts`)
+  - Chunks file contents, embeds with `gemini-embedding-001` (768-dim), stores in Supabase `code_embeddings`
+  - Triggered fire-and-forget after every analysis (authenticated users only)
+  - Similarity search via `match_code_chunks` RPC
+- 🚧 Chat interface for codebase Q&A — NOT YET STARTED
+  - Next: implement `POST /api/chat` (RAG retrieval + Gemini response)
+  - Then: implement `app/chat/page.tsx` (chat UI)
 
 ### Phase 4: Advanced Features (Planned)
 - Interactive file tree visualization
