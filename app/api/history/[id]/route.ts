@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db/prisma";
+
+function getSupabaseAdmin() {
+    return createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+}
 
 /**
  * DELETE /api/history/[id]
@@ -28,7 +36,7 @@ export async function DELETE(
         // Verify ownership before deleting
         const analysis = await prisma.analysis.findUnique({
             where: { id },
-            select: { userId: true },
+            select: { userId: true, repoFullName: true },
         });
 
         if (!analysis) {
@@ -46,6 +54,20 @@ export async function DELETE(
         }
 
         await prisma.analysis.delete({ where: { id } });
+
+        // Cascade: delete embeddings for this repo
+        const supabaseAdmin = getSupabaseAdmin();
+        const { error: embeddingDeleteError } = await supabaseAdmin
+            .from("code_embeddings")
+            .delete()
+            .eq("user_id", session.user.id)
+            .eq("repo_full_name", analysis.repoFullName);
+
+        if (embeddingDeleteError) {
+            console.error("⚠️ Failed to delete embeddings (non-blocking):", embeddingDeleteError.message);
+        } else {
+            console.log(`🗑️ Deleted embeddings for ${analysis.repoFullName}`);
+        }
 
         return NextResponse.json({ success: true });
     } catch (error) {

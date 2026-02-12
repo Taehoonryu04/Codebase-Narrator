@@ -161,11 +161,13 @@ Run `npx prisma migrate dev` after schema changes.
 - Embedding model: `gemini-embedding-001` with `outputDimensionality: 768` (MRL truncation) → `lib/ai/embeddings.ts`
   - NOTE: `text-embedding-004` is deprecated (404). Use `gemini-embedding-001` only.
   - NOTE: Do NOT use `apiVersion: "v1"` — default v1beta works for this model.
+  - Sequential embedding: BATCH_SIZE=1, BATCH_DELAY_MS=500 (free tier rate limit workaround)
 - `code_embeddings` table in Supabase: `vector(768)`, `hnsw` index (ivfflat also works at 768 dims)
 - Similarity search via Supabase RPC `match_code_chunks(query_embedding, match_user_id, match_repo, match_count)`
 - Embeddings stored fire-and-forget after analysis in `POST /api/analyze` (step 10, authenticated users only)
 - At chat time: embed user query → `searchSimilarChunks()` → `buildRagContext()` → inject top-k chunks as context
-- Delete embeddings when analysis is deleted (cascade — not yet implemented)
+- Cascade deletion: embeddings deleted when analysis is deleted via `DELETE /api/history/[id]`
+  - Uses service-role Supabase client to delete by `user_id + repo_full_name`
 
 **Rate Limiting (Phase 3):**
 - `RateLimit` table: one row per user, 24-hour rolling window

@@ -3,8 +3,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 const EMBEDDING_MODEL = "gemini-embedding-001";
-const BATCH_SIZE = 5;
-const BATCH_DELAY_MS = 200;
+const BATCH_SIZE = 1;
+const BATCH_DELAY_MS = 500;
 
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
