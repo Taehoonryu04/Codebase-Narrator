@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 3 ✅ COMPLETE — Phase 4 is next.
+**Current Phase:** Phase 4 🚧 IN PROGRESS — Phase 5 is next.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -226,12 +226,14 @@ Run `npx prisma migrate dev` after schema changes.
 **Completed:** Phase 1 (MVP), Phase 2 (Auth + History), Phase 3 (RAG + Chat + Rate limiting)
 - TODO: set RATE_LIMITS to `analysis: 5, chat: 50` in `lib/rate-limit.ts` before production (currently 9999 for dev)
 
-### Phase 4: Advanced Features (Next)
-- Interactive file tree visualization
-- React Flow dependency graphs
-- CI/CD (GitHub Actions)
-- Testing (Vitest + Playwright)
-- Monitoring (Sentry)
+### Phase 4: Engine Refinement (Current)
+- [ ] **Adaptive Scanner**: Dynamic file priority based on project structure (Fix over-filtering).
+- [ ] **Hybrid Search**: Implement Keyword + Vector search for 2x better retrieval accuracy.
+- [ ] **Chat Streaming**: Implementation of SSE (Server-Sent Events) for real-time chat UX.
+
+### Phase 5: Advanced Insights (Next)
+- [ ] **Visual Architecture**: Generate Mermaid diagrams to visualize code flow.
+- [ ] **Code Health Audit**: Automated report on potential bugs and security risks.
 
 ## Quality Bar
 
