@@ -163,7 +163,6 @@ npm run dev              # http://localhost:3000
 - **Fire-and-forget embedding:** Embeddings are generated asynchronously after analysis so the user gets their result immediately without waiting for vector ingestion.
 - **User-scoped embeddings:** Each user's code chunks are stored with their `user_id`, so search is always scoped — no cross-user data leakage.
 - **Sequential embedding with backoff:** Free-tier Gemini rate limits are respected by processing one chunk at a time with a 500ms delay between calls.
-- **Fixed-viewport chat layout:** The chat page uses `h-full flex-col overflow-hidden` so the input bar is always pinned to the bottom regardless of message count.
 
 ---
 
