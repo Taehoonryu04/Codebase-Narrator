@@ -33,12 +33,20 @@ export function Navigation() {
                     {/* Nav Links + Auth Section */}
                     <div className="flex items-center gap-4">
                         {user && (
-                            <Link
-                                href="/history"
-                                className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
-                            >
-                                History
-                            </Link>
+                            <>
+                                <Link
+                                    href="/history"
+                                    className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+                                >
+                                    History
+                                </Link>
+                                <Link
+                                    href="/chat"
+                                    className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+                                >
+                                    Chat
+                                </Link>
+                            </>
                         )}
                         {loading ? (
                             <div className="w-32 h-10 bg-neutral-100 dark:bg-neutral-800 rounded-lg animate-pulse" />

@@ -54,8 +54,20 @@ export const analyzeRequestSchema = z.object({
  *
  * Zod의 강력한 기능: 스키마에서 TypeScript 타입을 자동 추론
  */
+export const chatMessageSchema = z.object({
+    role: z.enum(["user", "model"]),
+    content: z.string().min(1),
+});
+
+export const chatRequestSchema = z.object({
+    repoFullName: z.string().min(1, "repoFullName is required"),
+    message: z.string().min(1, "Message is required").max(2000, "Message too long"),
+    history: z.array(chatMessageSchema).max(50).optional().default([]),
+});
+
 export type GithubUrlInput = z.infer<typeof githubUrlSchema>;
 export type AnalyzeRequestInput = z.infer<typeof analyzeRequestSchema>;
+export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
 
 /**
  * Custom error formatter

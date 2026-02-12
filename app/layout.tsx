@@ -21,14 +21,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="h-full">
       <body
-        className={`${ubuntu.variable} font-sans antialiased`}
+        className={`${ubuntu.variable} font-sans antialiased h-full flex flex-col`}
         suppressHydrationWarning
       >
         <AuthProvider>
           <Navigation />
-          {children}
+          <div className="flex-1 overflow-auto min-h-0">
+            {children}
+          </div>
         </AuthProvider>
       </body>
     </html>
