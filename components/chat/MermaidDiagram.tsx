@@ -8,17 +8,32 @@ interface MermaidDiagramProps {
 
 // Fix common AI-generated Mermaid violations before passing to the renderer.
 function sanitizeMermaid(raw: string): string {
+    // Strip all content from %% onward on each line (Mermaid comment syntax —
+    // AI occasionally emits %% inside a label which silently drops the rest of the line)
+    const stripComment = (line: string) => line.replace(/%%.*$/, "").trimEnd();
+
+    // Characters to remove from inside node/subgraph labels
+    const cleanLabel = (inner: string) =>
+        inner
+            .replace(/[()]/g, "")      // parentheses break flowchart parser
+            .replace(/`/g, "")         // backticks trigger mermaid markdown mode in v10+
+            .replace(/"/g, "'");       // double-quotes inside a label break the lexer
+
     return raw
         .split("\n")
         .map((line) => {
-            // Strip trailing semicolons (AI often adds them; not valid in flowchart TD)
+            line = stripComment(line);
+            // Strip trailing semicolons (not valid in flowchart TD)
             line = line.replace(/;\s*$/, "");
-            // Remove parentheses inside square-bracket labels [...]
-            line = line.replace(/\[([^\]]*)\]/g, (_, inner) => `[${inner.replace(/[()]/g, "")}]`);
-            // Remove parentheses inside curly-brace labels {...}
-            line = line.replace(/\{([^}]*)\}/g, (_, inner) => `{${inner.replace(/[()]/g, "")}}`);
-            // Replace dots in node IDs (e.g. D6.1 -> D6_1).
-            // Node IDs appear at the start of a line or after whitespace, before [ { ( --> ---
+            // Clean inside square-bracket labels [...]
+            line = line.replace(/\[([^\]]*)\]/g, (_, inner) => `[${cleanLabel(inner)}]`);
+            // Clean inside curly-brace labels {...}
+            line = line.replace(/\{([^}]*)\}/g, (_, inner) => `{${cleanLabel(inner)}}`);
+            // Clean subgraph title lines (subgraph title may not contain special chars)
+            if (/^\s*subgraph\b/.test(line)) {
+                line = line.replace(/[()"`]/g, "");
+            }
+            // Replace dots in node IDs (e.g. D6.1 -> D6_1)
             line = line.replace(/\b(\w+)\.(\w+)\b(?=\s*(?:[\[{(]|-->|--))/g, "$1_$2");
             return line;
         })
@@ -38,7 +53,7 @@ export default function MermaidDiagram({ code }: MermaidDiagramProps) {
                 const mermaid = (await import("mermaid")).default;
                 mermaid.initialize({
                     startOnLoad: false,
-                    theme: document.documentElement.classList.contains("dark") ? "dark" : "neutral",
+                    theme: "neutral",
                     securityLevel: "loose",
                 });
                 const { svg } = await mermaid.render(`mermaid_${id}`, sanitizeMermaid(code));

@@ -100,7 +100,8 @@ Answer the user's question about this codebase using the code context above.
   1. Node IDs must be alphanumeric only — no dots, dashes, or spaces. Use underscores: D6_1 not D6.1.
   2. Node labels inside [] or () or {} must contain plain text only. No parentheses (), no curly braces {}, no arrow symbols --> or ->, no pipe |, no colon :, no semicolon ;, no quotes.
   3. Never put an arrow symbol inside a label string. Write [RRF Top 8 Chunks] not [Reciprocal Rank Fusion --> Top-8].
-  4. Keep labels short. Omit parens from function names: write checkAndIncrementChat not checkAndIncrementChat().`;
+  4. Keep labels short. Omit parens from function names: write checkAndIncrementChat not checkAndIncrementChat().
+  5. subgraph titles must also contain plain text only — no parentheses. Write "subgraph Settings Activity" not "subgraph Settings Activity (com/example/Settings.java)".`;
 
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
