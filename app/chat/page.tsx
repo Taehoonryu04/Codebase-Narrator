@@ -31,10 +31,58 @@ export default function ChatPage() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [sending, setSending] = useState(false);
+    const [streamingMessage, setStreamingMessage] = useState<{ content: string; sources: string[] } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [chatRemaining, setChatRemaining] = useState<number | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Typewriter buffer refs
+    const bufferRef = useRef<string>("");
+    const sourcesRef = useRef<string[]>([]);
+    const streamDoneRef = useRef(false);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const displayedRef = useRef<string>("");  // tracks what's been typed out
+
+    // Starts the typewriter interval. Owns setSending(false) on completion.
+    const startTypewriter = useCallback(() => {
+        bufferRef.current = "";
+        sourcesRef.current = [];
+        streamDoneRef.current = false;
+        displayedRef.current = "";
+        if (intervalRef.current) clearInterval(intervalRef.current);
+
+        intervalRef.current = setInterval(() => {
+            if (bufferRef.current.length === 0) {
+                if (streamDoneRef.current) {
+                    clearInterval(intervalRef.current!);
+                    intervalRef.current = null;
+                    // Read final values synchronously — no nested setter
+                    const finalContent = displayedRef.current;
+                    const sources = sourcesRef.current;
+                    setMessages((msgs) => [
+                        ...msgs,
+                        { role: "model", content: finalContent, sources },
+                    ]);
+                    setStreamingMessage(null);
+                    setSending(false);
+                    inputRef.current?.focus();
+                }
+                return;
+            }
+            // Dynamic speed: drain faster when buffer builds up
+            const charsToShow =
+                bufferRef.current.length > 200 ? 6
+                : bufferRef.current.length > 80 ? 3
+                : 1;
+            const chars = bufferRef.current.slice(0, charsToShow);
+            bufferRef.current = bufferRef.current.slice(charsToShow);
+            displayedRef.current += chars;
+            setStreamingMessage((prev) =>
+                prev ? { ...prev, content: prev.content + chars } : prev
+            );
+        }, 16); // ~60fps base tick
+    }, []);
 
     // Fetch user's analyzed repos for the selector
     const fetchRepos = useCallback(async () => {
@@ -75,8 +123,12 @@ export default function ChatPage() {
     }, [user, fetchRepos, fetchRateLimit]);
 
     useEffect(() => {
+        return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    }, []);
+
+    useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [messages, streamingMessage?.content]);
 
     const sendMessage = async () => {
         if (!input.trim() || !selectedRepo || sending) return;
@@ -106,24 +158,57 @@ export default function ChatPage() {
                 }),
             });
 
-            const data = await res.json();
-
             if (!res.ok) {
+                const data = await res.json();
                 setError(data.error ?? "Failed to get response");
-                // Remove the user message on error
                 setMessages(messages);
+                setSending(false);
+                inputRef.current?.focus();
                 return;
             }
 
-            setMessages([
-                ...newMessages,
-                { role: "model", content: data.reply, sources: data.sources ?? [] },
-            ]);
+            setStreamingMessage({ content: "", sources: [] });
+            startTypewriter(); // owns setSending(false) on completion
+
+            const reader = res.body!.getReader();
+            const decoder = new TextDecoder();
+            let sseBuffer = "";
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    sseBuffer += decoder.decode(value, { stream: true });
+                    const lines = sseBuffer.split("\n");
+                    sseBuffer = lines.pop() ?? "";
+
+                    for (const line of lines) {
+                        if (!line.startsWith("data: ")) continue;
+                        const event = JSON.parse(line.slice(6));
+
+                        if (event.type === "chunk") {
+                            bufferRef.current += event.text;
+                        } else if (event.type === "done") {
+                            sourcesRef.current = event.sources;
+                            streamDoneRef.current = true;
+                        } else if (event.type === "error") {
+                            setError(event.message ?? "Stream interrupted.");
+                            streamDoneRef.current = true;
+                        }
+                    }
+                }
+            } catch {
+                setError("Network error. Please try again.");
+                streamDoneRef.current = true;
+            }
+
             setChatRemaining((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
         } catch {
             setError("Network error. Please try again.");
             setMessages(messages);
-        } finally {
+            setStreamingMessage(null);
+            if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
             setSending(false);
             inputRef.current?.focus();
         }
@@ -340,24 +425,31 @@ export default function ChatPage() {
                                     ))}
                                 </AnimatePresence>
 
-                                {/* Typing indicator */}
+                                {/* Streaming bubble / typing indicator */}
                                 {sending && (
                                     <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
+                                        initial={{ opacity: 0, y: 8 }}
+                                        animate={{ opacity: 1, y: 0 }}
                                         className="flex justify-start"
                                     >
-                                        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
-                                            <div className="flex gap-1 items-center h-4">
-                                                {[0, 1, 2].map((i) => (
-                                                    <motion.div
-                                                        key={i}
-                                                        className="w-1.5 h-1.5 rounded-full bg-neutral-400 dark:bg-neutral-500"
-                                                        animate={{ y: [0, -4, 0] }}
-                                                        transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
-                                                    />
-                                                ))}
-                                            </div>
+                                        <div className="max-w-[80%] bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm text-sm leading-relaxed text-neutral-900 dark:text-white whitespace-pre-wrap">
+                                            {streamingMessage && streamingMessage.content.length > 0 ? (
+                                                <>
+                                                    {streamingMessage.content}
+                                                    <span className="inline-block w-0.5 h-4 bg-neutral-400 dark:bg-neutral-500 ml-0.5 align-text-bottom animate-pulse" />
+                                                </>
+                                            ) : (
+                                                <div className="flex gap-1 items-center h-4">
+                                                    {[0, 1, 2].map((i) => (
+                                                        <motion.div
+                                                            key={i}
+                                                            className="w-1.5 h-1.5 rounded-full bg-neutral-400 dark:bg-neutral-500"
+                                                            animate={{ y: [0, -4, 0] }}
+                                                            transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </motion.div>
                                 )}

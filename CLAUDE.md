@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 4 🚧 IN PROGRESS (4.1 + 4.2 done) — Phase 5 is next.
+**Current Phase:** Phase 4 ✅ COMPLETE — Phase 5 is next.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -186,11 +186,13 @@ Run `npx prisma migrate dev` after schema changes.
 - Server logs in terminal, client logs in browser console
 - API routes are server-only (no `window`, `localStorage`)
 
-**Chat API (Phase 3):**
+**Chat API (Phase 3 + 4.3):**
 - `POST /api/chat` in `app/api/chat/route.ts`
-- Flow: auth check → Zod validate (`chatRequestSchema`) → `checkAndIncrementChat` (429 if over limit) → `searchSimilarChunks(userId, repoFullName, message, 8)` → `buildRagContext(chunks)` → Gemini `generateContent` with system prompt + history + user message → return `{ reply: string, sources: string[] }`
+- Flow: auth check → Zod validate (`chatRequestSchema`) → `checkAndIncrementChat` (429 if over limit) → `searchSimilarChunks(userId, repoFullName, message, 8)` → `buildRagContext(chunks)` → Gemini `generateContentStream` → SSE stream to client
+- Response format: `text/event-stream` SSE. Events: `{"type":"chunk","text":"..."}` per delta, `{"type":"done","sources":[...]}` at end, `{"type":"error","message":"..."}` on failure
+- Pre-stream errors (auth, validation, rate limit, no embeddings) still return normal `NextResponse.json(...)` with appropriate status codes
 - Conversation history passed as `history: [{role, content}][]` in request body (max 50 turns)
-- If no embeddings found for repo → returns plain message asking user to run analysis first
+- If no embeddings found for repo → returns plain JSON (non-streaming) asking user to run analysis first
 - Requires authentication (401 if unauthenticated — embeddings are user-scoped)
 
 **Layout Architecture:**
@@ -202,8 +204,13 @@ Run `npx prisma migrate dev` after schema changes.
 - Fixed viewport layout — messages scroll internally, input bar always visible at bottom
 - URL param: `?repo=owner/repo` pre-selects a repository; falls back to selector from history
 - Repo selector shown in header when user has multiple analyzed repos
-- Typing indicator (3-dot bounce animation) while waiting for response
-- Source chips displayed below each AI message (unique file paths from RAG chunks)
+- **Streaming UX (Phase 4.3):** Typewriter buffer renders AI response character-by-character at ~60fps
+  - `bufferRef` accumulates SSE chunks (no re-renders on arrival)
+  - `setInterval(16ms)` dequeues chars: 1 char normally, 3 at >80 buffered, 6 at >200 (catch-up)
+  - `displayedRef` tracks typed content so finalization reads it synchronously (avoids nested-setter double-render bug)
+  - 3-dot bounce shown until first char arrives, then live streaming bubble with blinking cursor
+  - `streamDoneRef` signals typewriter to finalize after buffer drains; typewriter owns `setSending(false)`
+- Source chips displayed below each finalized AI message (unique file paths from RAG chunks)
 - Rate limit display: remaining chat messages today (from `GET /api/rate-limit`)
 
 **Landing Page (`app/page.tsx`):**
@@ -245,7 +252,10 @@ Run `npx prisma migrate dev` after schema changes.
   - Fetches `topK*2` candidates per method before fusion to ensure quality top-K
   - Keyword failure degrades gracefully to pure vector (warn + continue); vector failure throws
   - Migration: `supabase/migrations/001_hybrid_search.sql` (run once in Supabase SQL Editor)
-- [ ] **Chat Streaming**: Implementation of SSE (Server-Sent Events) for real-time chat UX.
+- [x] **Chat Streaming**: ✅ DONE — `app/api/chat/route.ts` + `app/chat/page.tsx`
+  - Backend: `generateContentStream` → `ReadableStream` → `text/event-stream` SSE response
+  - Frontend: SSE reader feeds `bufferRef`; `setInterval(16ms)` typewriter drains it with dynamic catch-up speed
+  - Finalization via `displayedRef` (avoids React nested-setter double-render bug)
 
 ### Phase 5: Advanced Insights (Next)
 - [ ] **Visual Architecture**: Generate Mermaid diagrams to visualize code flow.

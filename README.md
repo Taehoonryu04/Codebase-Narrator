@@ -12,7 +12,7 @@ Built with Next.js 16, Google Gemini 2.5 Flash, and a full RAG (Retrieval-Augmen
 - **Chat with Your Codebase** — Ask questions about any analyzed repo in natural language. A full RAG pipeline embeds code chunks, retrieves semantically relevant context, and generates grounded answers.
 - **Analysis History** — Authenticated users can revisit past analyses and launch chat sessions from any previously analyzed repository.
 - **Rate Limiting** — Per-user daily limits (5 analyses / 50 chats) enforced server-side with a 24-hour rolling window.
-- **Smooth UX** — Scroll-reveal landing page, typing indicators, streaming-ready architecture, and a fixed-viewport chat layout.
+- **Real-time Streaming Chat** — AI responses stream token-by-token via SSE. A client-side typewriter buffer renders text at ~60fps with dynamic catch-up, eliminating perceived latency.
 
 ---
 
@@ -56,7 +56,8 @@ Chat (POST /api/chat)
   → Hybrid search: vector similarity + FTS keyword search (top-16 each)
   → Reciprocal Rank Fusion → top-8 chunks
   → Inject context into Gemini prompt
-  → Return { reply, sources }
+  → generateContentStream → SSE stream (text/event-stream)
+  → Client typewriter buffer renders at ~60fps with dynamic catch-up
 ```
 
 ### Project Structure
@@ -149,10 +150,10 @@ npm run dev              # http://localhost:3000
 - Phase 2: Auth + Analysis History (GitHub OAuth, NextAuth, Prisma)
 - Phase 3: RAG + Chat + Rate Limiting (pgvector, embeddings, chat API)
 
-**In Progress — Phase 4: Engine Refinement**
+**Completed — Phase 4: Engine Refinement**
 - [x] Adaptive Scanner — tiered file scoring with language-aware prioritization, deep-path support (depth 10), and XML/resource file handling
 - [x] Hybrid Search — Reciprocal Rank Fusion over vector + FTS keyword search; `content_tsv` generated column + GIN index + `keyword_search_code_chunks` RPC
-- [ ] Chat Streaming — SSE for real-time response UX
+- [x] Chat Streaming — SSE + client-side typewriter buffer for fluid, ChatGPT-like real-time UX
 
 **Planned — Phase 5: Advanced Insights**
 - [ ] Visual Architecture — auto-generated Mermaid diagrams

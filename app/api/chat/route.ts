@@ -107,12 +107,43 @@ Answer the user's question about this codebase using the code context above.
             { role: "user", parts: [{ text: message }] },
         ];
 
-        const result = await model.generateContent({ contents });
-        const reply = result.response.text().trim();
+        const result = await model.generateContentStream({ contents });
 
-        console.log(`✅ Chat response: ${reply.length} chars, ${sources.length} sources`);
+        console.log(`✅ Streaming chat response started, ${sources.length} sources`);
 
-        return NextResponse.json({ reply, sources });
+        const stream = new ReadableStream({
+            async start(controller) {
+                const encoder = new TextEncoder();
+                try {
+                    for await (const chunk of result.stream) {
+                        const text = chunk.text();
+                        if (text) {
+                            controller.enqueue(
+                                encoder.encode(`data: ${JSON.stringify({ type: "chunk", text })}\n\n`)
+                            );
+                        }
+                    }
+                    controller.enqueue(
+                        encoder.encode(`data: ${JSON.stringify({ type: "done", sources })}\n\n`)
+                    );
+                } catch (err) {
+                    console.error("❌ Stream error:", err);
+                    controller.enqueue(
+                        encoder.encode(`data: ${JSON.stringify({ type: "error", message: "Stream interrupted." })}\n\n`)
+                    );
+                } finally {
+                    controller.close();
+                }
+            },
+        });
+
+        return new Response(stream, {
+            headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        });
     } catch (error) {
         console.error("❌ Chat error:", error);
         return NextResponse.json(
