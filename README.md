@@ -52,8 +52,9 @@ User Input (GitHub URL)
 
 Chat (POST /api/chat)
   → Auth check + rate limit
-  → Embed user query
-  → Similarity search (top-8 chunks via Supabase RPC)
+  → Embed user query (parallel with keyword search)
+  → Hybrid search: vector similarity + FTS keyword search (top-16 each)
+  → Reciprocal Rank Fusion → top-8 chunks
   → Inject context into Gemini prompt
   → Return { reply, sources }
 ```
@@ -150,7 +151,7 @@ npm run dev              # http://localhost:3000
 
 **In Progress — Phase 4: Engine Refinement**
 - [x] Adaptive Scanner — tiered file scoring with language-aware prioritization, deep-path support (depth 10), and XML/resource file handling
-- [ ] Hybrid Search — keyword + vector search for better retrieval
+- [x] Hybrid Search — Reciprocal Rank Fusion over vector + FTS keyword search; `content_tsv` generated column + GIN index + `keyword_search_code_chunks` RPC
 - [ ] Chat Streaming — SSE for real-time response UX
 
 **Planned — Phase 5: Advanced Insights**

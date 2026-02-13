@@ -105,7 +105,40 @@ export async function storeEmbeddings(
 }
 
 /**
- * Embed a query and retrieve the top-k most similar code chunks via RPC.
+ * Combine two ranked result lists using Reciprocal Rank Fusion.
+ * score(d) = Σ 1/(k + rank(d)) across lists; k=60 is standard.
+ * Deduplicates by filePath::chunkIndex key.
+ */
+function reciprocalRankFusion(
+    vectorResults: CodeChunk[],
+    keywordResults: CodeChunk[],
+    topK: number,
+    k = 60
+): CodeChunk[] {
+    const scores = new Map<string, { chunk: CodeChunk; score: number }>();
+
+    const addResults = (list: CodeChunk[]) => {
+        list.forEach((chunk, rank) => {
+            const key = `${chunk.filePath}::${chunk.chunkIndex}`;
+            const prev = scores.get(key);
+            const rrfScore = 1 / (k + rank + 1);
+            scores.set(key, { chunk, score: (prev?.score ?? 0) + rrfScore });
+        });
+    };
+
+    addResults(vectorResults);
+    addResults(keywordResults);
+
+    return [...scores.values()]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK)
+        .map((v) => v.chunk);
+}
+
+/**
+ * Hybrid search: runs vector similarity + keyword (FTS) search in parallel,
+ * then fuses results with Reciprocal Rank Fusion.
+ * Degrades gracefully to pure vector search if keyword search fails or returns nothing.
  */
 export async function searchSimilarChunks(
     userId: string,
@@ -114,26 +147,58 @@ export async function searchSimilarChunks(
     topK: number = 8
 ): Promise<CodeChunk[]> {
     const supabase = getSupabaseAdmin();
+    const fetchCount = topK * 2; // wider candidate set before fusion
 
-    const queryEmbedding = await embedText(query);
+    // Embed query and run keyword search concurrently
+    const [queryEmbedding, keywordResultRaw] = await Promise.all([
+        embedText(query),
+        supabase.rpc("keyword_search_code_chunks", {
+            match_user_id: userId,
+            match_repo: repoFullName,
+            keyword_query: query,
+            match_count: fetchCount,
+        }),
+    ]);
 
-    const { data, error } = await supabase.rpc("match_code_chunks", {
+    // Vector search depends on embedding (runs after)
+    const { data: vectorData, error: vectorError } = await supabase.rpc("match_code_chunks", {
         query_embedding: queryEmbedding,
         match_user_id: userId,
         match_repo: repoFullName,
-        match_count: topK,
+        match_count: fetchCount,
     });
 
-    if (error) {
-        console.error("❌ Similarity search failed:", error.message);
-        throw error;
+    if (vectorError) {
+        console.error("❌ Vector search failed:", vectorError.message);
+        throw vectorError;
     }
 
-    return (data ?? []).map((row: { file_path: string; chunk_index: number; content: string }) => ({
-        filePath: row.file_path,
-        chunkIndex: row.chunk_index,
-        content: row.content,
-    }));
+    const vectorChunks: CodeChunk[] = (vectorData ?? []).map(
+        (r: { file_path: string; chunk_index: number; content: string }) => ({
+            filePath: r.file_path,
+            chunkIndex: r.chunk_index,
+            content: r.content,
+        })
+    );
+
+    const keywordChunks: CodeChunk[] =
+        !keywordResultRaw.error && keywordResultRaw.data
+            ? keywordResultRaw.data.map(
+                  (r: { file_path: string; chunk_index: number; content: string }) => ({
+                      filePath: r.file_path,
+                      chunkIndex: r.chunk_index,
+                      content: r.content,
+                  })
+              )
+            : [];
+
+    if (keywordResultRaw.error) {
+        console.warn("⚠️ Keyword search failed (vector-only fallback):", keywordResultRaw.error.message);
+    }
+
+    console.log(`🔍 Hybrid search: ${vectorChunks.length} vector + ${keywordChunks.length} keyword results`);
+
+    return reciprocalRankFusion(vectorChunks, keywordChunks, topK);
 }
 
 /**

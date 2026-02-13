@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 4 🚧 IN PROGRESS — Phase 5 is next.
+**Current Phase:** Phase 4 🚧 IN PROGRESS (4.1 + 4.2 done) — Phase 5 is next.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -166,7 +166,10 @@ Run `npx prisma migrate dev` after schema changes.
   - NOTE: Do NOT use `apiVersion: "v1"` — default v1beta works for this model.
   - Sequential embedding: BATCH_SIZE=1, BATCH_DELAY_MS=500 (free tier rate limit workaround)
 - `code_embeddings` table in Supabase: `vector(768)`, `hnsw` index (ivfflat also works at 768 dims)
-- Similarity search via Supabase RPC `match_code_chunks(query_embedding, match_user_id, match_repo, match_count)`
+- Also has `content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED` + GIN index for FTS (Phase 4.2)
+- Vector search RPC: `match_code_chunks(query_embedding, match_user_id, match_repo, match_count)`
+- Keyword search RPC: `keyword_search_code_chunks(match_user_id, match_repo, keyword_query, match_count)` — uses `websearch_to_tsquery` + `ts_rank`
+- Migration SQL: `supabase/migrations/001_hybrid_search.sql`
 - Embeddings stored fire-and-forget after analysis in `POST /api/analyze` (step 10, authenticated users only)
 - At chat time: embed user query → `searchSimilarChunks()` → `buildRagContext()` → inject top-k chunks as context
 - Cascade deletion: embeddings deleted when analysis is deleted via `DELETE /api/history/[id]`
@@ -235,7 +238,13 @@ Run `npx prisma migrate dev` after schema changes.
   - `maxDepth` raised from 5 → 10 (fixes Java/Android deep package paths, e.g. depth 8)
   - Mid-path test dirs caught: `/(^|\/)tests?|__tests__|specs?|androidTest\//` (was only catching root-level)
   - `.xml` added to filter + scored (layout/30, generic/45) — fixes Android res/layout, Maven, Spring
-- [ ] **Hybrid Search**: Implement Keyword + Vector search for 2x better retrieval accuracy.
+- [x] **Hybrid Search**: ✅ DONE — `lib/ai/rag.ts`
+  - `searchSimilarChunks()` now runs vector + keyword search in parallel, fuses via Reciprocal Rank Fusion (k=60)
+  - Keyword search uses PostgreSQL FTS: `content_tsv` (generated `tsvector`) + GIN index + `keyword_search_code_chunks` RPC
+  - `reciprocalRankFusion()` deduplicates by `filePath::chunkIndex`, sums `1/(60+rank+1)` scores across both lists
+  - Fetches `topK*2` candidates per method before fusion to ensure quality top-K
+  - Keyword failure degrades gracefully to pure vector (warn + continue); vector failure throws
+  - Migration: `supabase/migrations/001_hybrid_search.sql` (run once in Supabase SQL Editor)
 - [ ] **Chat Streaming**: Implementation of SSE (Server-Sent Events) for real-time chat UX.
 
 ### Phase 5: Advanced Insights (Next)
