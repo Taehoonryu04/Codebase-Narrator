@@ -76,8 +76,9 @@ export async function POST(request: NextRequest) {
         }
 
         const ragContext = buildRagContext(chunks);
-        const sources = [...new Set(chunks.map((c) => c.filePath))];
-        console.log(`🔍 Retrieved ${chunks.length} chunks from ${sources.length} files`);
+        // Deduplicate file paths for the log, but keep full SourceChunk[] for the client
+        const uniqueFiles = [...new Set(chunks.map((c) => c.filePath))];
+        console.log(`🔍 Retrieved ${chunks.length} chunks from ${uniqueFiles.length} files`);
 
         // Step 5: Build prompt and call Gemini
         const systemPrompt = `You are an expert software engineer helping a developer understand a codebase.
@@ -109,7 +110,7 @@ Answer the user's question about this codebase using the code context above.
 
         const result = await model.generateContentStream({ contents });
 
-        console.log(`✅ Streaming chat response started, ${sources.length} sources`);
+        console.log(`✅ Streaming chat response started, ${uniqueFiles.length} sources`);
 
         const stream = new ReadableStream({
             async start(controller) {
@@ -124,7 +125,7 @@ Answer the user's question about this codebase using the code context above.
                         }
                     }
                     controller.enqueue(
-                        encoder.encode(`data: ${JSON.stringify({ type: "done", sources })}\n\n`)
+                        encoder.encode(`data: ${JSON.stringify({ type: "done", sources: chunks })}\n\n`)
                     );
                 } catch (err) {
                     console.error("❌ Stream error:", err);

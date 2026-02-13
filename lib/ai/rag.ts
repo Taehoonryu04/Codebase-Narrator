@@ -13,14 +13,28 @@ function getSupabaseAdmin() {
 const CHUNK_SIZE = 2000;
 const CHUNK_OVERLAP = 200;
 
+/** Minimal chunk shape used internally and stored in the DB. */
 export interface CodeChunk {
     filePath: string;
     chunkIndex: number;
     content: string;
+    startLine: number;
+    endLine: number;
+}
+
+/**
+ * Enriched chunk returned from hybrid search.
+ * Carries RRF fusion metadata on top of the base CodeChunk fields.
+ * Exported for use by the chat route and the frontend types.
+ */
+export interface SourceChunk extends CodeChunk {
+    rrfScore: number;
+    matchedBy: "vector" | "keyword" | "both";
 }
 
 /**
  * Split a file's content into overlapping chunks of ~500 tokens.
+ * Line numbers are computed from character offsets (1-indexed).
  */
 export function chunkFile(filePath: string, content: string): CodeChunk[] {
     const chunks: CodeChunk[] = [];
@@ -29,11 +43,20 @@ export function chunkFile(filePath: string, content: string): CodeChunk[] {
 
     while (start < content.length) {
         const end = Math.min(start + CHUNK_SIZE, content.length);
+        const chunkContent = content.slice(start, end);
+
+        // Count newlines before start/end positions to get 1-indexed line numbers
+        const startLine = content.slice(0, start).split("\n").length;
+        const endLine = content.slice(0, end).split("\n").length;
+
         chunks.push({
             filePath,
             chunkIndex: index++,
-            content: content.slice(start, end),
+            content: chunkContent,
+            startLine,
+            endLine,
         });
+
         if (end === content.length) break;
         start += CHUNK_SIZE - CHUNK_OVERLAP;
     }
@@ -82,13 +105,15 @@ export async function storeEmbeddings(
     const texts = allChunks.map((c) => `File: ${c.filePath}\n\n${c.content}`);
     const embeddings = await embedBatch(texts);
 
-    // Insert rows
+    // Insert rows (now includes start_line / end_line)
     const rows = allChunks.map((chunk, i) => ({
         user_id: userId,
         repo_full_name: repoFullName,
         file_path: chunk.filePath,
         chunk_index: chunk.chunkIndex,
         content: chunk.content,
+        start_line: chunk.startLine,
+        end_line: chunk.endLine,
         embedding: embeddings[i],
     }));
 
@@ -104,35 +129,62 @@ export async function storeEmbeddings(
     console.log(`✅ Stored ${rows.length} embeddings for ${repoFullName}`);
 }
 
+type RpcRow = {
+    file_path: string;
+    chunk_index: number;
+    content: string;
+    start_line: number;
+    end_line: number;
+};
+
+function rowToCodeChunk(r: RpcRow): CodeChunk {
+    return {
+        filePath: r.file_path,
+        chunkIndex: r.chunk_index,
+        content: r.content,
+        startLine: r.start_line ?? 1,
+        endLine: r.end_line ?? 1,
+    };
+}
+
 /**
  * Combine two ranked result lists using Reciprocal Rank Fusion.
  * score(d) = Σ 1/(k + rank(d)) across lists; k=60 is standard.
  * Deduplicates by filePath::chunkIndex key.
+ * Returns SourceChunk[] with rrfScore and matchedBy populated.
  */
 function reciprocalRankFusion(
     vectorResults: CodeChunk[],
     keywordResults: CodeChunk[],
     topK: number,
     k = 60
-): CodeChunk[] {
-    const scores = new Map<string, { chunk: CodeChunk; score: number }>();
+): SourceChunk[] {
+    const scores = new Map<string, { chunk: CodeChunk; score: number; matchedBy: "vector" | "keyword" | "both" }>();
 
-    const addResults = (list: CodeChunk[]) => {
+    const addResults = (list: CodeChunk[], source: "vector" | "keyword") => {
         list.forEach((chunk, rank) => {
             const key = `${chunk.filePath}::${chunk.chunkIndex}`;
             const prev = scores.get(key);
             const rrfScore = 1 / (k + rank + 1);
-            scores.set(key, { chunk, score: (prev?.score ?? 0) + rrfScore });
+            scores.set(key, {
+                chunk,
+                score: (prev?.score ?? 0) + rrfScore,
+                matchedBy: prev ? "both" : source,
+            });
         });
     };
 
-    addResults(vectorResults);
-    addResults(keywordResults);
+    addResults(vectorResults, "vector");
+    addResults(keywordResults, "keyword");
 
     return [...scores.values()]
         .sort((a, b) => b.score - a.score)
         .slice(0, topK)
-        .map((v) => v.chunk);
+        .map((v) => ({
+            ...v.chunk,
+            rrfScore: v.score,
+            matchedBy: v.matchedBy,
+        }));
 }
 
 /**
@@ -145,7 +197,7 @@ export async function searchSimilarChunks(
     repoFullName: string,
     query: string,
     topK: number = 8
-): Promise<CodeChunk[]> {
+): Promise<SourceChunk[]> {
     const supabase = getSupabaseAdmin();
     const fetchCount = topK * 2; // wider candidate set before fusion
 
@@ -173,23 +225,11 @@ export async function searchSimilarChunks(
         throw vectorError;
     }
 
-    const vectorChunks: CodeChunk[] = (vectorData ?? []).map(
-        (r: { file_path: string; chunk_index: number; content: string }) => ({
-            filePath: r.file_path,
-            chunkIndex: r.chunk_index,
-            content: r.content,
-        })
-    );
+    const vectorChunks: CodeChunk[] = (vectorData ?? []).map(rowToCodeChunk);
 
     const keywordChunks: CodeChunk[] =
         !keywordResultRaw.error && keywordResultRaw.data
-            ? keywordResultRaw.data.map(
-                  (r: { file_path: string; chunk_index: number; content: string }) => ({
-                      filePath: r.file_path,
-                      chunkIndex: r.chunk_index,
-                      content: r.content,
-                  })
-              )
+            ? keywordResultRaw.data.map(rowToCodeChunk)
             : [];
 
     if (keywordResultRaw.error) {
@@ -203,11 +243,12 @@ export async function searchSimilarChunks(
 
 /**
  * Format retrieved chunks into a context block for the chat prompt.
+ * Includes file path and line range so Gemini can cite specific locations.
  */
-export function buildRagContext(chunks: CodeChunk[]): string {
+export function buildRagContext(chunks: SourceChunk[]): string {
     if (chunks.length === 0) return "";
 
     return chunks
-        .map((c) => `[File: ${c.filePath}]\n${c.content}`)
+        .map((c) => `[File: ${c.filePath}, Lines: ${c.startLine}-${c.endLine}]\n${c.content}`)
         .join("\n\n---\n\n");
 }

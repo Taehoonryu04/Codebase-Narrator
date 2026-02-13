@@ -14,10 +14,20 @@ interface HistoryItem {
     analyzedAt: string;
 }
 
+interface SourceChunk {
+    filePath: string;
+    chunkIndex: number;
+    content: string;
+    startLine: number;
+    endLine: number;
+    rrfScore: number;
+    matchedBy: "vector" | "keyword" | "both";
+}
+
 interface ChatMessage {
     role: "user" | "model";
     content: string;
-    sources?: string[];
+    sources?: SourceChunk[];
 }
 
 export default function ChatPage() {
@@ -31,15 +41,16 @@ export default function ChatPage() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [sending, setSending] = useState(false);
-    const [streamingMessage, setStreamingMessage] = useState<{ content: string; sources: string[] } | null>(null);
+    const [streamingMessage, setStreamingMessage] = useState<{ content: string; sources: SourceChunk[] } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [chatRemaining, setChatRemaining] = useState<number | null>(null);
+    const [activeSource, setActiveSource] = useState<SourceChunk | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     // Typewriter buffer refs
     const bufferRef = useRef<string>("");
-    const sourcesRef = useRef<string[]>([]);
+    const sourcesRef = useRef<SourceChunk[]>([]);
     const streamDoneRef = useRef(false);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const displayedRef = useRef<string>("");  // tracks what's been typed out
@@ -404,19 +415,33 @@ export default function ChatPage() {
                                                     {msg.content}
                                                 </div>
 
-                                                {/* Sources */}
+                                                {/* Source chips */}
                                                 {msg.role === "model" && msg.sources && msg.sources.length > 0 && (
                                                     <div className="mt-2 flex flex-wrap gap-1.5">
-                                                        {msg.sources.map((src) => (
-                                                            <span
-                                                                key={src}
-                                                                className="inline-block text-xs px-2 py-0.5 rounded-full
+                                                        {/* Deduplicate by filePath, keep first (highest RRF) chunk per file */}
+                                                        {Array.from(
+                                                            new Map(msg.sources.map((s) => [s.filePath, s])).values()
+                                                        ).map((src) => (
+                                                            <button
+                                                                key={`${src.filePath}::${src.chunkIndex}`}
+                                                                onClick={() => setActiveSource(src)}
+                                                                title={`${src.filePath} · lines ${src.startLine}–${src.endLine} · ${src.matchedBy}`}
+                                                                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full
                                                                     bg-neutral-100 dark:bg-neutral-800
-                                                                    text-neutral-500 dark:text-neutral-400
-                                                                    border border-neutral-200 dark:border-neutral-700"
+                                                                    text-neutral-600 dark:text-neutral-300
+                                                                    border border-neutral-200 dark:border-neutral-700
+                                                                    hover:bg-neutral-200 dark:hover:bg-neutral-700
+                                                                    hover:border-neutral-400 dark:hover:border-neutral-500
+                                                                    transition-colors cursor-pointer"
                                                             >
-                                                                {src}
-                                                            </span>
+                                                                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
+                                                                    <path d="M2 2h8M2 6h5M2 10h3" />
+                                                                </svg>
+                                                                <span className="truncate max-w-[180px]">
+                                                                    {src.filePath.split("/").slice(-2).join("/")}
+                                                                </span>
+                                                                <span className="opacity-50 shrink-0">:{src.startLine}</span>
+                                                            </button>
                                                         ))}
                                                     </div>
                                                 )}
@@ -529,6 +554,71 @@ export default function ChatPage() {
                     </>
                 )}
             </main>
+
+            {/* Source viewer modal */}
+            <AnimatePresence>
+                {activeSource && (
+                    <motion.div
+                        key="source-modal-backdrop"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                        onClick={() => setActiveSource(null)}
+                    >
+                        <motion.div
+                            key="source-modal"
+                            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                            transition={{ duration: 0.15 }}
+                            className="relative w-full max-w-2xl max-h-[80vh] flex flex-col
+                                bg-white dark:bg-neutral-900
+                                border border-neutral-200 dark:border-neutral-700
+                                rounded-2xl shadow-2xl overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal header */}
+                            <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-mono font-medium text-neutral-900 dark:text-white truncate">
+                                        {activeSource.filePath}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                                        Lines {activeSource.startLine}–{activeSource.endLine}
+                                        <span className="mx-1.5 opacity-40">·</span>
+                                        <span className={
+                                            activeSource.matchedBy === "both"
+                                                ? "text-violet-500 dark:text-violet-400"
+                                                : activeSource.matchedBy === "vector"
+                                                ? "text-blue-500 dark:text-blue-400"
+                                                : "text-amber-500 dark:text-amber-400"
+                                        }>
+                                            {activeSource.matchedBy === "both" ? "vector + keyword" : activeSource.matchedBy}
+                                        </span>
+                                        <span className="mx-1.5 opacity-40">·</span>
+                                        score {activeSource.rrfScore.toFixed(4)}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setActiveSource(null)}
+                                    className="shrink-0 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors text-xl leading-none"
+                                    aria-label="Close"
+                                >
+                                    &times;
+                                </button>
+                            </div>
+
+                            {/* Code content */}
+                            <div className="overflow-auto flex-1 p-5">
+                                <pre className="text-xs leading-relaxed font-mono text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap break-words">
+                                    {activeSource.content}
+                                </pre>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

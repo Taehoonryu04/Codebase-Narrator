@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 4 ✅ COMPLETE — Phase 5 is next.
+**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -185,10 +185,11 @@ Run `npx prisma migrate dev` after schema changes.
 - Server logs in terminal, client logs in browser console
 - API routes are server-only (no `window`, `localStorage`)
 
-**Chat API (Phase 3 + 4.3):**
+**Chat API (Phase 3 + 4.3 + 5.1):**
 - `POST /api/chat` in `app/api/chat/route.ts`
 - Flow: auth check → Zod validate (`chatRequestSchema`) → `checkAndIncrementChat` (429 if over limit) → `searchSimilarChunks(userId, repoFullName, message, 8)` → `buildRagContext(chunks)` → Gemini `generateContentStream` → SSE stream to client
 - Response format: `text/event-stream` SSE. Events: `{"type":"chunk","text":"..."}` per delta, `{"type":"done","sources":[...]}` at end, `{"type":"error","message":"..."}` on failure
+- **Phase 5-1:** `sources` in `done` event is now `SourceChunk[]` (not `string[]`) — each chunk carries `filePath`, `chunkIndex`, `content`, `startLine`, `endLine`, `rrfScore`, `matchedBy`
 - Pre-stream errors (auth, validation, rate limit, no embeddings) still return normal `NextResponse.json(...)` with appropriate status codes
 - Conversation history passed as `history: [{role, content}][]` in request body (max 50 turns)
 - If no embeddings found for repo → returns plain JSON (non-streaming) asking user to run analysis first
@@ -209,7 +210,9 @@ Run `npx prisma migrate dev` after schema changes.
   - `displayedRef` tracks typed content so finalization reads it synchronously (avoids nested-setter double-render bug)
   - 3-dot bounce shown until first char arrives, then live streaming bubble with blinking cursor
   - `streamDoneRef` signals typewriter to finalize after buffer drains; typewriter owns `setSending(false)`
-- Source chips displayed below each finalized AI message (unique file paths from RAG chunks)
+- **Source chips (Phase 5-1):** Clickable chips below each AI message — deduplicated by `filePath` (best RRF chunk per file), show `path/file.ts:startLine`, labeled with `matchedBy` badge (vector/keyword/both)
+  - Clicking a chip opens a `SourceViewerModal` (Framer Motion `AnimatePresence`) showing the raw code snippet, line range, match method color-coded (violet=both, blue=vector, amber=keyword), and RRF score
+  - `activeSource: SourceChunk | null` state drives modal; `sourcesRef` is now `SourceChunk[]`
 - Rate limit display: remaining chat messages today (from `GET /api/rate-limit`)
 
 **Landing Page (`app/page.tsx`):**
@@ -233,28 +236,37 @@ Run `npx prisma migrate dev` after schema changes.
 
 ## Phase Roadmap
 
-**Completed:** Phase 1 (MVP), Phase 2 (Auth + History), Phase 3 (RAG + Chat + Rate limiting)
+**Completed:** Phase 1 (MVP), Phase 2 (Auth + History), Phase 3 (RAG + Chat + Rate limiting), Phase 4 (Engine Refinement)
 - TODO: set RATE_LIMITS to `analysis: 5, chat: 50` in `lib/rate-limit.ts` before production (currently 9999 for dev)
 
-### Phase 4: Engine Refinement (Current)
-- [x] **Adaptive Scanner**: ✅ DONE — `lib/github.ts`
+### Phase 4: Engine Refinement ✅ COMPLETE
+- [x] **Adaptive Scanner** — `lib/github.ts`
   - `scoreFile(path, primaryLanguage)` scores every file before the `maxFiles` slice
   - Tiers: manifests(5) → entry points(10+depth) → src dirs(20+depth) → UI resources(30) → config(40) → XML(45) → fallback(50+depth×2) → docs(60) → tests(70) → generated(90)
   - Language bonus: −5 for files matching repo's primary language inside src dirs
   - `maxDepth` raised from 5 → 10 (fixes Java/Android deep package paths, e.g. depth 8)
   - Mid-path test dirs caught: `/(^|\/)tests?|__tests__|specs?|androidTest\//` (was only catching root-level)
   - `.xml` added to filter + scored (layout/30, generic/45) — fixes Android res/layout, Maven, Spring
-- [x] **Hybrid Search**: ✅ DONE — `lib/ai/rag.ts`
+- [x] **Hybrid Search** — `lib/ai/rag.ts`
   - `searchSimilarChunks()` now runs vector + keyword search in parallel, fuses via Reciprocal Rank Fusion (k=60)
   - Keyword search uses PostgreSQL FTS: `content_tsv` (generated `tsvector`) + GIN index + `keyword_search_code_chunks` RPC
   - `reciprocalRankFusion()` deduplicates by `filePath::chunkIndex`, sums `1/(60+rank+1)` scores across both lists
   - Fetches `topK*2` candidates per method before fusion to ensure quality top-K
   - Keyword failure degrades gracefully to pure vector (warn + continue); vector failure throws
   - Migration: `supabase/migrations/001_hybrid_search.sql` (run once in Supabase SQL Editor)
-- [x] **Chat Streaming**: ✅ DONE — `app/api/chat/route.ts` + `app/chat/page.tsx`
+- [x] **Chat Streaming** — `app/api/chat/route.ts` + `app/chat/page.tsx`
 
-### Phase 5: Reliability & Architectural Insights (Next)
-- [ ] **Source Traceability (Citations)**: Reference system to display source file chips and specific code snippets used in AI responses to eliminate hallucination.
+### Phase 5: Reliability & Architectural Insights 🚧 IN PROGRESS
+
+- [x] **Source Traceability (Citations)** ✅ DONE
+  - `SourceChunk` interface (`lib/ai/rag.ts`): extends `CodeChunk` with `startLine`, `endLine`, `rrfScore`, `matchedBy`
+  - `CodeChunk` now stores `startLine`/`endLine` computed in `chunkFile()` via `content.slice(0, offset).split("\n").length`
+  - `storeEmbeddings()` writes `start_line`/`end_line` to DB; `reciprocalRankFusion()` returns `SourceChunk[]` with scores + provenance
+  - `buildRagContext()` includes `[File: path, Lines: N-M]` headers in Gemini prompt
+  - `done` SSE event emits `sources: SourceChunk[]` (was `string[]`)
+  - Chat page: clickable chips per unique file (deduplicated by `filePath`, best RRF chunk), `SourceViewerModal` on click
+  - Migration: `supabase/migrations/002_add_line_numbers.sql` — adds `start_line`/`end_line` columns, drops + recreates both RPCs to return new columns
+
 - [ ] **Architectural Visualizer**: Auto-generate Mermaid diagrams (flowcharts, dependency graphs) from codebase analysis.
 - [ ] **Performance & Cost Monitoring**: Dashboard for token usage per analysis and hybrid search latency.
 - [ ] **AI Code Health Audit**: Structured reports on technical debt, architectural bottlenecks, and security risks with prioritized action items.
