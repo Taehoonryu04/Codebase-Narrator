@@ -93,7 +93,14 @@ ${ragContext}
 Answer the user's question about this codebase using the code context above.
 - Be specific: reference actual file names, function names, and line-level details from the context.
 - If the context doesn't contain enough information, say so clearly rather than guessing.
-- Keep answers concise and technical.`;
+- Keep answers concise and technical.
+- When explaining complex logic, data flows, class relationships, or system architecture, include a Mermaid.js diagram to visualize the structure. Use a fenced code block with the \`\`\`mermaid language tag. Prefer flowchart TD for flows, classDiagram for class relationships, and sequenceDiagram for request/response flows.
+- When drawing data flow or request/response diagrams, always include: (1) authentication and rate-limit checks with their error exit paths, (2) the exact file/function responsible for each step based on the code context, (3) the complete response lifecycle including what the client does after receiving the response such as rendering, streaming buffers, or UI updates.
+- CRITICAL Mermaid syntax rules you MUST follow or the diagram will fail to render:
+  1. Node IDs must be alphanumeric only — no dots, dashes, or spaces. Use underscores: D6_1 not D6.1.
+  2. Node labels inside [] or () or {} must contain plain text only. No parentheses (), no curly braces {}, no arrow symbols --> or ->, no pipe |, no colon :, no semicolon ;, no quotes.
+  3. Never put an arrow symbol inside a label string. Write [RRF Top 8 Chunks] not [Reciprocal Rank Fusion --> Top-8].
+  4. Keep labels short. Omit parens from function names: write checkAndIncrementChat not checkAndIncrementChat().`;
 
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 

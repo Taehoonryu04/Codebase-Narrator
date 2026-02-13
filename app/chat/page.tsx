@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { FloatingPaths } from "@/components/ui/floating-paths";
 import Link from "next/link";
+import MessageContent from "@/components/chat/MessageContent";
 
 interface HistoryItem {
     id: string;
@@ -406,13 +407,16 @@ export default function ChatPage() {
                                         >
                                             <div className={`max-w-[80%] ${msg.role === "user" ? "order-1" : ""}`}>
                                                 <div
-                                                    className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap
+                                                    className={`rounded-2xl px-4 py-3
                                                         ${msg.role === "user"
-                                                            ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-br-sm"
+                                                            ? "text-sm leading-relaxed whitespace-pre-wrap bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-br-sm"
                                                             : "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white rounded-bl-sm shadow-sm"
                                                         }`}
                                                 >
-                                                    {msg.content}
+                                                    {msg.role === "user"
+                                                        ? msg.content
+                                                        : <MessageContent content={msg.content} />
+                                                    }
                                                 </div>
 
                                                 {/* Source chips */}

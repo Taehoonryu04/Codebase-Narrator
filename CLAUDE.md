@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE.
+**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE, Phase 5-2 (Architectural Visualizer) ✅ DONE.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -210,6 +210,7 @@ Run `npx prisma migrate dev` after schema changes.
   - `displayedRef` tracks typed content so finalization reads it synchronously (avoids nested-setter double-render bug)
   - 3-dot bounce shown until first char arrives, then live streaming bubble with blinking cursor
   - `streamDoneRef` signals typewriter to finalize after buffer drains; typewriter owns `setSending(false)`
+- **Markdown + Mermaid rendering (Phase 5-2):** Completed model messages render via `<MessageContent>` (`components/chat/MessageContent.tsx`) using `react-markdown` + `remark-gfm`. Mermaid code blocks render as interactive SVG diagrams via `<MermaidDiagram>` (`components/chat/MermaidDiagram.tsx`). Streaming bubble stays plain text. Diagrams have Download SVG + fullscreen expand. Parse failures show amber fallback with raw source.
 - **Source chips (Phase 5-1):** Clickable chips below each AI message — deduplicated by `filePath` (best RRF chunk per file), show `path/file.ts:startLine`, labeled with `matchedBy` badge (vector/keyword/both)
   - Clicking a chip opens a `SourceViewerModal` (Framer Motion `AnimatePresence`) showing the raw code snippet, line range, match method color-coded (violet=both, blue=vector, amber=keyword), and RRF score
   - `activeSource: SourceChunk | null` state drives modal; `sourcesRef` is now `SourceChunk[]`
@@ -267,7 +268,13 @@ Run `npx prisma migrate dev` after schema changes.
   - Chat page: clickable chips per unique file (deduplicated by `filePath`, best RRF chunk), `SourceViewerModal` on click
   - Migration: `supabase/migrations/002_add_line_numbers.sql` — adds `start_line`/`end_line` columns, drops + recreates both RPCs to return new columns
 
-- [ ] **Architectural Visualizer**: Auto-generate Mermaid diagrams (flowcharts, dependency graphs) from codebase analysis.
+- [x] **Architectural Visualizer** ✅ DONE
+  - `mermaid` v11 installed; rendered client-side only via `next/dynamic` (SSR-safe)
+  - `components/chat/MermaidDiagram.tsx`: renders SVG from mermaid code, toolbar with Download SVG + Expand buttons, fullscreen modal overlay, amber fallback on parse error (shows raw source)
+  - `components/chat/MessageContent.tsx`: `react-markdown` + `remark-gfm` renderer — detects ` ```mermaid ` blocks → `MermaidDiagram`; styled renderers for code blocks, lists, headings, blockquotes
+  - `app/chat/page.tsx`: completed model messages now render via `<MessageContent>` (markdown+mermaid); streaming bubble stays plain text (in-progress chars, not final)
+  - `sanitizeMermaid()` pre-processor in `MermaidDiagram.tsx` fixes common AI violations before rendering: strips trailing `;`, removes `()` from inside `[...]`/`{...}` labels, replaces dots in node IDs (`D6.1` → `D6_1`)
+  - System prompt in `app/api/chat/route.ts` updated: instructs AI to generate diagrams for flows/architecture, includes strict syntax rules (no parens, no dots in node IDs, no arrows in labels), and requires auth/error paths + complete response lifecycle in flow diagrams
 - [ ] **Performance & Cost Monitoring**: Dashboard for token usage per analysis and hybrid search latency.
 - [ ] **AI Code Health Audit**: Structured reports on technical debt, architectural bottlenecks, and security risks with prioritized action items.
 - [ ] **Production Readiness**: CI/CD deployment, mobile responsiveness, and `ARCHITECT.md` documenting the RAG engine design.
