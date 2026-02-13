@@ -150,7 +150,7 @@ Run `npx prisma migrate dev` after schema changes.
 - Git Tree API with `recursive: "1"` fetches all files in one request (efficient)
 - Rate limits: 60/hr (no token) vs 5,000/hr (with token)
 - Files >1MB won't return content
-- Truncate files to first 500 lines for AI processing
+- Truncate files to first 600 lines for AI processing (`buildCodebaseTextBlock` default)
 
 **Gemini AI:**
 - Use `gemini-2.5-flash` model (older 1.5 models deprecated → 404)
@@ -172,8 +172,7 @@ Run `npx prisma migrate dev` after schema changes.
 - Migration SQL: `supabase/migrations/001_hybrid_search.sql`
 - Embeddings stored fire-and-forget after analysis in `POST /api/analyze` (step 10, authenticated users only)
 - At chat time: embed user query → `searchSimilarChunks()` → `buildRagContext()` → inject top-k chunks as context
-- Cascade deletion: embeddings deleted when analysis is deleted via `DELETE /api/history/[id]`
-  - Uses service-role Supabase client to delete by `user_id + repo_full_name`
+- Cascade deletion: embeddings deleted when analysis is deleted via `DELETE /api/history/[id]` (service-role client, deletes by `user_id + repo_full_name`)
 
 **Rate Limiting (Phase 3):**
 - `RateLimit` table: one row per user, 24-hour rolling window
@@ -253,9 +252,6 @@ Run `npx prisma migrate dev` after schema changes.
   - Keyword failure degrades gracefully to pure vector (warn + continue); vector failure throws
   - Migration: `supabase/migrations/001_hybrid_search.sql` (run once in Supabase SQL Editor)
 - [x] **Chat Streaming**: ✅ DONE — `app/api/chat/route.ts` + `app/chat/page.tsx`
-  - Backend: `generateContentStream` → `ReadableStream` → `text/event-stream` SSE response
-  - Frontend: SSE reader feeds `bufferRef`; `setInterval(16ms)` typewriter drains it with dynamic catch-up speed
-  - Finalization via `displayedRef` (avoids React nested-setter double-render bug)
 
 ### Phase 5: Advanced Insights (Next)
 - [ ] **Visual Architecture**: Generate Mermaid diagrams to visualize code flow.

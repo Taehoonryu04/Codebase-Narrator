@@ -44,8 +44,8 @@ User Input (GitHub URL)
          (manifests → entry points → src dirs → UI resources → config → docs → tests → generated)
       5. Fetch file contents (batched, priority-sorted)
       6. Truncate to 600 lines/file → send to Gemini with structured prompt
-      6. Parse JSON response → return AnalysisResult
-      7. Store embeddings fire-and-forget (authenticated users)
+      7. Parse JSON response → return AnalysisResult
+      8. Store embeddings fire-and-forget (authenticated users)
           → chunk files (~2000 chars, 200-char overlap)
           → embed with gemini-embedding-001
           → upsert to Supabase code_embeddings table
@@ -149,11 +149,10 @@ npm run dev              # http://localhost:3000
 - Phase 1: MVP analysis (GitHub URL → Gemini → structured output)
 - Phase 2: Auth + Analysis History (GitHub OAuth, NextAuth, Prisma)
 - Phase 3: RAG + Chat + Rate Limiting (pgvector, embeddings, chat API)
-
-**Completed — Phase 4: Engine Refinement**
-- [x] Adaptive Scanner — tiered file scoring with language-aware prioritization, deep-path support (depth 10), and XML/resource file handling
-- [x] Hybrid Search — Reciprocal Rank Fusion over vector + FTS keyword search; `content_tsv` generated column + GIN index + `keyword_search_code_chunks` RPC
-- [x] Chat Streaming — SSE + client-side typewriter buffer for fluid, ChatGPT-like real-time UX
+- Phase 4: Engine Refinement
+  - Adaptive Scanner — tiered file scoring with language-aware prioritization, deep-path support (depth 10), and XML/resource file handling
+  - Hybrid Search — Reciprocal Rank Fusion over vector + FTS keyword search; `content_tsv` generated column + GIN index + `keyword_search_code_chunks` RPC
+  - Chat Streaming — SSE + client-side typewriter buffer for fluid, ChatGPT-like real-time UX
 
 **Planned — Phase 5: Advanced Insights**
 - [ ] Visual Architecture — auto-generated Mermaid diagrams
