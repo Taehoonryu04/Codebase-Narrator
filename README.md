@@ -154,9 +154,12 @@ npm run dev              # http://localhost:3000
   - Hybrid Search — Reciprocal Rank Fusion over vector + FTS keyword search; `content_tsv` generated column + GIN index + `keyword_search_code_chunks` RPC
   - Chat Streaming — SSE + client-side typewriter buffer for fluid, ChatGPT-like real-time UX
 
-**Planned — Phase 5: Advanced Insights**
-- [ ] Visual Architecture — auto-generated Mermaid diagrams
-- [ ] Code Health Audit — automated bug and security risk reports
+**Planned — Phase 5: Reliability & Architectural Insights**
+- [ ] Source Traceability — source file chips and code snippets cited in AI responses to eliminate hallucination
+- [ ] Architectural Visualizer — auto-generated Mermaid diagrams (flowcharts, dependency graphs)
+- [ ] Performance & Cost Monitoring — token usage and hybrid search latency dashboard
+- [ ] AI Code Health Audit — structured reports on technical debt, bottlenecks, and security risks
+- [ ] Production Readiness — CI/CD, mobile optimization, and `ARCHITECT.md` for RAG engine design
 
 ---
 

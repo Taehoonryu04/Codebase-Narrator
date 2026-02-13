@@ -253,9 +253,12 @@ Run `npx prisma migrate dev` after schema changes.
   - Migration: `supabase/migrations/001_hybrid_search.sql` (run once in Supabase SQL Editor)
 - [x] **Chat Streaming**: ✅ DONE — `app/api/chat/route.ts` + `app/chat/page.tsx`
 
-### Phase 5: Advanced Insights (Next)
-- [ ] **Visual Architecture**: Generate Mermaid diagrams to visualize code flow.
-- [ ] **Code Health Audit**: Automated report on potential bugs and security risks.
+### Phase 5: Reliability & Architectural Insights (Next)
+- [ ] **Source Traceability (Citations)**: Reference system to display source file chips and specific code snippets used in AI responses to eliminate hallucination.
+- [ ] **Architectural Visualizer**: Auto-generate Mermaid diagrams (flowcharts, dependency graphs) from codebase analysis.
+- [ ] **Performance & Cost Monitoring**: Dashboard for token usage per analysis and hybrid search latency.
+- [ ] **AI Code Health Audit**: Structured reports on technical debt, architectural bottlenecks, and security risks with prioritized action items.
+- [ ] **Production Readiness**: CI/CD deployment, mobile responsiveness, and `ARCHITECT.md` documenting the RAG engine design.
 
 ## Quality Bar
 
