@@ -2,22 +2,31 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { RepoInputForm } from "@/components/analyze/RepoInputForm";
 import { AnalysisResult } from "@/components/analyze/AnalysisResult";
 import { FloatingPaths } from "@/components/ui/floating-paths";
 import type { AnalysisResult as AnalysisResultType } from "@/lib/types";
+
+const ANALYSIS_STEPS = [
+    { icon: "🔗", label: "Connecting to repository..." },
+    { icon: "🗂", label: "Mapping file tree & scoring relevance..." },
+    { icon: "📄", label: "Fetching priority source files..." },
+    { icon: "🧠", label: "Running deep AI analysis..." },
+    { icon: "✨", label: "Finalizing insights..." },
+];
 
 /**
  * Inner component that reads search params (must be inside Suspense)
  */
 function AnalyzeContent() {
     const searchParams = useSearchParams();
-    const [repoUrl, setRepoUrl] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [result, setResult] = useState<AnalysisResultType | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [currentStep, setCurrentStep] = useState(0);
     const autoTriggered = useRef(false);
+    const stepTimersRef = useRef<NodeJS.Timeout[]>([]);
 
     // Auto-analyze from query params (e.g., from History re-analyze)
     useEffect(() => {
@@ -35,18 +44,24 @@ function AnalyzeContent() {
         setIsAnalyzing(true);
         setError(null);
         setResult(null);
-        setRepoUrl(url);
+        setCurrentStep(0);
+
+        // Steps 0→1→2→3 advance quickly (~1.5s each) mirroring fast GitHub API calls.
+        // Step 3 ("Running deep AI analysis") holds until Gemini responds.
+        // Step 4 ("Finalizing insights") shows briefly after response arrives.
+        const timers: NodeJS.Timeout[] = [
+            setTimeout(() => setCurrentStep(1), 1500),
+            setTimeout(() => setCurrentStep(2), 3000),
+            setTimeout(() => setCurrentStep(3), 5000),
+        ];
+        stepTimersRef.current = timers;
+        const clearTimers = () => timers.forEach(clearTimeout);
 
         try {
             const response = await fetch("/api/analyze", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    repoUrl: url,
-                    maxFiles: 50,
-                }),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ repoUrl: url, maxFiles: 50 }),
             });
 
             const data = await response.json();
@@ -55,10 +70,15 @@ function AnalyzeContent() {
                 throw new Error(data.error || "Analysis failed");
             }
 
+            // Step 4: briefly show "Finalizing" before revealing results
+            clearTimers();
+            setCurrentStep(4);
+            await new Promise((resolve) => setTimeout(resolve, 700));
             setResult(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : "An unknown error occurred");
         } finally {
+            clearTimers();
             setIsAnalyzing(false);
         }
     };
@@ -120,23 +140,88 @@ function AnalyzeContent() {
                 </motion.div>
 
                 {/* Loading State */}
+                <AnimatePresence>
                 {isAnalyzing && (
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="max-w-3xl mx-auto mt-12 text-center"
+                        exit={{ opacity: 0, y: -20 }}
+                        className="max-w-xl mx-auto mt-12"
                     >
-                        <div className="inline-flex items-center justify-center space-x-2 text-neutral-600 dark:text-neutral-400">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-neutral-900 dark:border-white" />
-                            <span className="text-lg font-medium">Analyzing...</span>
+                        {/* Card */}
+                        <div className="relative overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm p-8">
+                            {/* Shimmer accent along top */}
+                            <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-neutral-900 dark:via-white to-transparent animate-pulse" />
+
+                            {/* Orbital spinner */}
+                            <div className="flex justify-center mb-6">
+                                <div className="relative h-16 w-16">
+                                    {/* Outer ring */}
+                                    <motion.div
+                                        className="absolute inset-0 rounded-full border-2 border-neutral-200 dark:border-neutral-700"
+                                        style={{ borderTopColor: "transparent", borderRightColor: "transparent" }}
+                                        animate={{ rotate: 360 }}
+                                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                                    />
+                                    {/* Inner ring (counter-rotate) */}
+                                    <motion.div
+                                        className="absolute inset-2 rounded-full border-2 border-neutral-300 dark:border-neutral-600"
+                                        style={{ borderBottomColor: "transparent", borderLeftColor: "transparent" }}
+                                        animate={{ rotate: -360 }}
+                                        transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                                    />
+                                    {/* Center dot pulse */}
+                                    <motion.div
+                                        className="absolute inset-5 rounded-full bg-neutral-900 dark:bg-white"
+                                        animate={{ scale: [1, 1.3, 1], opacity: [0.7, 1, 0.7] }}
+                                        transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Step label with crossfade */}
+                            <div className="text-center mb-6 h-7 relative">
+                                <AnimatePresence mode="wait">
+                                    <motion.p
+                                        key={currentStep}
+                                        initial={{ opacity: 0, y: 8 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -8 }}
+                                        transition={{ duration: 0.3 }}
+                                        className="text-lg font-medium text-neutral-800 dark:text-neutral-200 absolute inset-x-0"
+                                    >
+                                        {ANALYSIS_STEPS[currentStep].icon}{" "}
+                                        {ANALYSIS_STEPS[currentStep].label}
+                                    </motion.p>
+                                </AnimatePresence>
+                            </div>
+
+                            {/* Progress dots */}
+                            <div className="flex justify-center gap-2 mb-6">
+                                {ANALYSIS_STEPS.map((_, i) => (
+                                    <motion.div
+                                        key={i}
+                                        className={`h-2 rounded-full ${
+                                            i <= currentStep
+                                                ? "bg-neutral-900 dark:bg-white"
+                                                : "bg-neutral-300 dark:bg-neutral-700"
+                                        }`}
+                                        animate={{ width: i === currentStep ? 24 : 8 }}
+                                        transition={{ duration: 0.4, ease: "easeInOut" }}
+                                    />
+                                ))}
+                            </div>
+
+                            {/* Subtext */}
+                            <p className="text-center text-sm text-neutral-500 dark:text-neutral-500">
+                                Deep-scanning repository structure, scoring files, and running AI analysis.
+                                <br />
+                                This may take up to 1–2 minutes for larger repositories.
+                            </p>
                         </div>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-500 mt-4">
-                            Fetching repository information and performing AI analysis.
-                            <br />
-                            Please wait (approximately 10-30 seconds)
-                        </p>
                     </motion.div>
                 )}
+                </AnimatePresence>
 
                 {/* Error Message */}
                 {error && (

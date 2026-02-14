@@ -469,7 +469,7 @@ export default function ChatPage() {
                                     <motion.div
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
-                                        className="text-center py-16 text-neutral-400 dark:text-neutral-600"
+                                        className="text-center py-16 text-neutral-400 dark:text-neutral-300"
                                     >
                                         {embeddingStatus?.status === "in_progress" ? (
                                             <>
@@ -510,7 +510,7 @@ export default function ChatPage() {
 
                                                 {/* Per-message stats */}
                                                 {msg.role === "model" && msg.stats && (
-                                                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-400 dark:text-neutral-500">
+                                                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-400 dark:text-neutral-400">
                                                         <span>RAG {(msg.stats.ragRetrievalMs / 1000).toFixed(2)}s</span>
                                                         <span>·</span>
                                                         <span>{msg.stats.totalTokens.toLocaleString()} tokens</span>
@@ -565,14 +565,14 @@ export default function ChatPage() {
                                             {streamingMessage && streamingMessage.content.length > 0 ? (
                                                 <>
                                                     {streamingMessage.content}
-                                                    <span className="inline-block w-0.5 h-4 bg-neutral-400 dark:bg-neutral-500 ml-0.5 align-text-bottom animate-pulse" />
+                                                    <span className="inline-block w-0.5 h-4 bg-neutral-400 dark:bg-neutral-300 ml-0.5 align-text-bottom animate-pulse" />
                                                 </>
                                             ) : (
                                                 <div className="flex gap-1 items-center h-4">
                                                     {[0, 1, 2].map((i) => (
                                                         <motion.div
                                                             key={i}
-                                                            className="w-1.5 h-1.5 rounded-full bg-neutral-400 dark:bg-neutral-500"
+                                                            className="w-1.5 h-1.5 rounded-full bg-neutral-400 dark:bg-neutral-400"
                                                             animate={{ y: [0, -4, 0] }}
                                                             transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
                                                         />
@@ -625,7 +625,7 @@ export default function ChatPage() {
                                     className="flex-1 resize-none rounded-xl border border-neutral-200 dark:border-neutral-700
                                         bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white
                                         px-4 py-3 text-sm leading-relaxed
-                                        placeholder:text-neutral-400 dark:placeholder:text-neutral-600
+                                        placeholder:text-neutral-400 dark:placeholder:text-neutral-500
                                         focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600
                                         disabled:opacity-50
                                         max-h-40 overflow-y-auto"
@@ -651,7 +651,7 @@ export default function ChatPage() {
                                     </svg>
                                 </button>
                             </div>
-                            <p className="max-w-3xl mx-auto mt-1.5 text-xs text-neutral-400 dark:text-neutral-600">
+                            <p className="max-w-3xl mx-auto mt-1.5 text-xs text-neutral-400 dark:text-neutral-400">
                                 Enter to send &middot; Shift+Enter for new line
                             </p>
                         </div>
