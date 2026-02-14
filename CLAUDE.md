@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE, Phase 5-2 (Architectural Visualizer) ✅ DONE.
+**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE, Phase 5-2 (Architectural Visualizer) ✅ DONE, Phase 5-3 (Performance & Cost Monitoring) ✅ DONE.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -275,7 +275,17 @@ Run `npx prisma migrate dev` after schema changes.
   - `app/chat/page.tsx`: completed model messages now render via `<MessageContent>` (markdown+mermaid); streaming bubble stays plain text (in-progress chars, not final)
   - `sanitizeMermaid()` pre-processor in `MermaidDiagram.tsx` fixes common AI violations before rendering: strips trailing `;`, removes `()` from inside `[...]`/`{...}` labels, replaces dots in node IDs (`D6.1` → `D6_1`)
   - System prompt in `app/api/chat/route.ts` updated: instructs AI to generate diagrams for flows/architecture, includes strict syntax rules (no parens, no dots in node IDs, no arrows in labels), and requires auth/error paths + complete response lifecycle in flow diagrams
-- [ ] **Performance & Cost Monitoring**: Dashboard for token usage per analysis and hybrid search latency.
+- [x] **Performance & Cost Monitoring** ✅ DONE
+  - `supabase/migrations/003_usage_logs.sql`: `usage_logs` table — tracks `user_id`, `ip_address`, `event_type` ('analyze'|'chat'), `execution_time_ms`, `rag_retrieval_ms`, `input_tokens`, `output_tokens`, `total_tokens`, `total_files`, `files_sent`, `estimated_cost_usd`; indexes on IP (anon) and user_id
+  - `lib/usage.ts`: `estimateCost()` (Gemini 2.5 Flash pricing: $0.075/1M input, $0.30/1M output), `logUsage()` (fire-and-forget INSERT), `checkAnonAnalysisLimit(ip)` (1 analysis/day for guests, fail-open on DB error)
+  - `lib/types/index.ts`: `AnalysisStats` + `ChatStats` interfaces; `stats?: AnalysisStats` added to `AnalysisResult`
+  - `lib/ai/gemini.ts`: `analyzeCodebase()` now returns `{ analysis, usageMetadata }` — exposes `promptTokenCount`, `candidatesTokenCount`, `totalTokenCount`
+  - `app/api/analyze/route.ts`: IP extraction, anon 1/day rate limit (429 + `upgradeRequired: true`), stats built from `usageMetadata` + timing, included in response JSON, fire-and-forget `logUsage()`
+  - `app/api/chat/route.ts`: `ragRetrievalMs` timer, token capture from `result.response` after stream, `stats: ChatStats` in `done` SSE event, fire-and-forget `logUsage()`
+  - `components/analyze/AnalysisResult.tsx`: stats bar in repo header card — ⏱ time · 🔢 tokens · 💰 cost · 🔍 files/total (% filtered); only shown if `stats` present
+  - `app/chat/page.tsx`: `statsRef` captures stats from `done` event; per-message inline stats rendered below source chips: `RAG Xs · N tokens · $X.XXXX`
+  - `components/main/landing-sections.tsx`: guest tier updated to "1 free analysis per day"
+  - **Required action**: Run `supabase/migrations/003_usage_logs.sql` in Supabase SQL Editor before deploying
 - [ ] **AI Code Health Audit**: Structured reports on technical debt, architectural bottlenecks, and security risks with prioritized action items.
 - [ ] **Production Readiness**: CI/CD deployment, mobile responsiveness, and `ARCHITECT.md` documenting the RAG engine design.
 

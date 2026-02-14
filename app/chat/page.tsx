@@ -25,10 +25,19 @@ interface SourceChunk {
     matchedBy: "vector" | "keyword" | "both";
 }
 
+interface ChatStats {
+    ragRetrievalMs: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+}
+
 interface ChatMessage {
     role: "user" | "model";
     content: string;
     sources?: SourceChunk[];
+    stats?: ChatStats;
 }
 
 export default function ChatPage() {
@@ -52,6 +61,7 @@ export default function ChatPage() {
     // Typewriter buffer refs
     const bufferRef = useRef<string>("");
     const sourcesRef = useRef<SourceChunk[]>([]);
+    const statsRef = useRef<ChatStats | null>(null);
     const streamDoneRef = useRef(false);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const displayedRef = useRef<string>("");  // tracks what's been typed out
@@ -60,6 +70,7 @@ export default function ChatPage() {
     const startTypewriter = useCallback(() => {
         bufferRef.current = "";
         sourcesRef.current = [];
+        statsRef.current = null;
         streamDoneRef.current = false;
         displayedRef.current = "";
         if (intervalRef.current) clearInterval(intervalRef.current);
@@ -72,9 +83,10 @@ export default function ChatPage() {
                     // Read final values synchronously — no nested setter
                     const finalContent = displayedRef.current;
                     const sources = sourcesRef.current;
+                    const stats = statsRef.current ?? undefined;
                     setMessages((msgs) => [
                         ...msgs,
-                        { role: "model", content: finalContent, sources },
+                        { role: "model", content: finalContent, sources, stats },
                     ]);
                     setStreamingMessage(null);
                     setSending(false);
@@ -203,6 +215,7 @@ export default function ChatPage() {
                             bufferRef.current += event.text;
                         } else if (event.type === "done") {
                             sourcesRef.current = event.sources;
+                            statsRef.current = event.stats ?? null;
                             streamDoneRef.current = true;
                         } else if (event.type === "error") {
                             setError(event.message ?? "Stream interrupted.");
@@ -418,6 +431,17 @@ export default function ChatPage() {
                                                         : <MessageContent content={msg.content} />
                                                     }
                                                 </div>
+
+                                                {/* Per-message stats */}
+                                                {msg.role === "model" && msg.stats && (
+                                                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-400 dark:text-neutral-500">
+                                                        <span>RAG {(msg.stats.ragRetrievalMs / 1000).toFixed(2)}s</span>
+                                                        <span>·</span>
+                                                        <span>{msg.stats.totalTokens.toLocaleString()} tokens</span>
+                                                        <span>·</span>
+                                                        <span>${msg.stats.estimatedCostUsd.toFixed(4)}</span>
+                                                    </div>
+                                                )}
 
                                                 {/* Source chips */}
                                                 {msg.role === "model" && msg.sources && msg.sources.length > 0 && (

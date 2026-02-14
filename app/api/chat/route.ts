@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { checkAndIncrementChat, windowLabel } from "@/lib/rate-limit";
 import { searchSimilarChunks, buildRagContext } from "@/lib/ai/rag";
 import { chatRequestSchema, formatZodError } from "@/lib/validation";
+import { logUsage, estimateCost } from "@/lib/usage";
+import type { ChatStats } from "@/lib/types";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -66,7 +68,9 @@ export async function POST(request: NextRequest) {
 
         // Step 4: RAG retrieval
         console.log(`💬 Chat request: "${message.slice(0, 60)}..." for ${repoFullName}`);
+        const ragStart = Date.now();
         const chunks = await searchSimilarChunks(userId, repoFullName, message, 8);
+        const ragRetrievalMs = Date.now() - ragStart;
 
         if (chunks.length === 0) {
             return NextResponse.json({
@@ -116,6 +120,7 @@ Answer the user's question about this codebase using the code context above.
             { role: "user", parts: [{ text: message }] },
         ];
 
+        const streamStart = Date.now();
         const result = await model.generateContentStream({ contents });
 
         console.log(`✅ Streaming chat response started, ${uniqueFiles.length} sources`);
@@ -132,9 +137,40 @@ Answer the user's question about this codebase using the code context above.
                             );
                         }
                     }
+
+                    // Capture token usage after stream completes
+                    const response = await result.response;
+                    const usageMetadata = response.usageMetadata;
+                    const inputTokens = usageMetadata?.promptTokenCount ?? 0;
+                    const outputTokens = usageMetadata?.candidatesTokenCount ?? 0;
+                    const totalTokens = usageMetadata?.totalTokenCount ?? 0;
+                    const estimatedCostUsd = estimateCost(inputTokens, outputTokens);
+                    const executionTimeMs = Date.now() - streamStart + ragRetrievalMs;
+
+                    const stats: ChatStats = {
+                        ragRetrievalMs,
+                        inputTokens,
+                        outputTokens,
+                        totalTokens,
+                        estimatedCostUsd,
+                    };
+
                     controller.enqueue(
-                        encoder.encode(`data: ${JSON.stringify({ type: "done", sources: chunks })}\n\n`)
+                        encoder.encode(`data: ${JSON.stringify({ type: "done", sources: chunks, stats })}\n\n`)
                     );
+
+                    // Log usage fire-and-forget
+                    logUsage({
+                        userId,
+                        eventType: "chat",
+                        repoFullName,
+                        executionTimeMs,
+                        ragRetrievalMs,
+                        inputTokens,
+                        outputTokens,
+                        totalTokens,
+                        estimatedCostUsd,
+                    });
                 } catch (err) {
                     console.error("❌ Stream error:", err);
                     controller.enqueue(

@@ -3,10 +3,11 @@
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { AnalysisResult as AnalysisResultType } from "@/lib/types";
+import type { AnalysisResult as AnalysisResultType, AnalysisStats } from "@/lib/types";
 
 interface AnalysisResultProps {
     result: AnalysisResultType;
+    stats?: AnalysisStats;
 }
 
 /**
@@ -18,8 +19,9 @@ interface AnalysisResultProps {
  * - File structure
  * - Code quality (if available)
  */
-export function AnalysisResult({ result }: AnalysisResultProps) {
+export function AnalysisResult({ result, stats }: AnalysisResultProps) {
     const { repoInfo, analysis, fileStructure, analyzedFiles, totalFiles } = result;
+    const effectiveStats = stats ?? result.stats;
 
     return (
         <div className="max-w-6xl mx-auto space-y-8">
@@ -48,6 +50,35 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
                         </div>
                     </div>
                 </div>
+
+                {/* Performance Stats Bar */}
+                {effectiveStats && (
+                    <div className="mt-5 flex flex-wrap gap-3">
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-full text-xs font-medium">
+                            <span>⏱</span>
+                            <span>{(effectiveStats.executionTimeMs / 1000).toFixed(1)}s</span>
+                        </span>
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-full text-xs font-medium">
+                            <span>🔢</span>
+                            <span>{effectiveStats.totalTokens.toLocaleString()} tokens</span>
+                        </span>
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-full text-xs font-medium">
+                            <span>💰</span>
+                            <span>${effectiveStats.estimatedCostUsd.toFixed(4)}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-full text-xs font-medium">
+                            <span>🔍</span>
+                            <span>
+                                {effectiveStats.filesSent}/{effectiveStats.totalFiles} files
+                                {effectiveStats.contextEfficiencyPct > 0 && (
+                                    <span className="ml-1 text-neutral-300">
+                                        ({effectiveStats.contextEfficiencyPct}% filtered)
+                                    </span>
+                                )}
+                            </span>
+                        </span>
+                    </div>
+                )}
 
                 {/* Topics */}
                 {repoInfo.topics.length > 0 && (

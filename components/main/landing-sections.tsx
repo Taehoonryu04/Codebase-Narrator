@@ -232,7 +232,7 @@ export function LandingSections() {
                         <FeatureCard
                             step="Step 01"
                             title="Paste a GitHub URL"
-                            description="Public repositories work without any account. Sign in with GitHub to unlock private repo access and save your analysis history."
+                            description="Public repositories work without any account — 1 free analysis per day as a guest. Sign in with GitHub for unlimited analyses and history."
                             detail="Supports any github.com/owner/repo URL. No cloning, no local setup required."
                             auth="free"
                             delay={0.1}

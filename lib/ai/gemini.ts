@@ -89,11 +89,7 @@ CRITICAL RULES:
  * - 소스코드 중심 분석 (README 참고 수준)
  * - 1M 토큰 컨텍스트 활용한 대규모 분석
  */
-export async function analyzeCodebase(
-    repoInfo: GitHubRepo,
-    fileStructure: FileNode[],
-    codebaseTextBlock: string
-): Promise<{
+interface AnalysisOutput {
     summary: string;
     techStack: string[];
     architecture: string;
@@ -105,18 +101,33 @@ export async function analyzeCodebase(
     };
     dataFlow?: string;
     entryPoints?: string[];
-}> {
+}
+
+interface UsageMetadata {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+}
+
+export async function analyzeCodebase(
+    repoInfo: GitHubRepo,
+    fileStructure: FileNode[],
+    codebaseTextBlock: string
+): Promise<{ analysis: AnalysisOutput; usageMetadata: UsageMetadata | undefined }> {
     try {
         if (!codebaseTextBlock.trim()) {
             console.warn("⚠️ No file contents available for analysis");
             return {
-                summary: `${repoInfo.fullName}: ${repoInfo.description || "A GitHub repository"}`,
-                techStack: repoInfo.language ? [repoInfo.language] : ["Unknown"],
-                architecture: "Insufficient data — repository appears to contain only non-code files",
-                keyFeatures: [
-                    "Unable to analyze — no source code files found",
-                    "This may be a documentation-only or binary-only repository",
-                ],
+                analysis: {
+                    summary: `${repoInfo.fullName}: ${repoInfo.description || "A GitHub repository"}`,
+                    techStack: repoInfo.language ? [repoInfo.language] : ["Unknown"],
+                    architecture: "Insufficient data — repository appears to contain only non-code files",
+                    keyFeatures: [
+                        "Unable to analyze — no source code files found",
+                        "This may be a documentation-only or binary-only repository",
+                    ],
+                },
+                usageMetadata: undefined,
             };
         }
 
@@ -132,6 +143,9 @@ export async function analyzeCodebase(
 
         console.log("✅ Gemini API response received");
         console.log(`📝 Response length: ${text.length} chars`);
+        if (response.usageMetadata) {
+            console.log(`📊 Tokens — input: ${response.usageMetadata.promptTokenCount}, output: ${response.usageMetadata.candidatesTokenCount}, total: ${response.usageMetadata.totalTokenCount}`);
+        }
 
         // Extract JSON — handle both raw JSON and markdown-wrapped JSON
         const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
@@ -144,7 +158,7 @@ export async function analyzeCodebase(
         const jsonText = jsonMatch[1] || jsonMatch[0];
         const analysis = JSON.parse(jsonText);
 
-        return analysis;
+        return { analysis, usageMetadata: response.usageMetadata };
     } catch (error) {
         console.error("❌ Gemini API error:", error);
 
@@ -154,10 +168,13 @@ export async function analyzeCodebase(
         }
 
         return {
-            summary: `${repoInfo.fullName} project. ${repoInfo.description || "Unable to perform detailed analysis."}`,
-            techStack: repoInfo.language ? [repoInfo.language] : ["Unknown"],
-            architecture: "Analysis failed — please try again",
-            keyFeatures: ["Unable to complete analysis. Please try again."],
+            analysis: {
+                summary: `${repoInfo.fullName} project. ${repoInfo.description || "Unable to perform detailed analysis."}`,
+                techStack: repoInfo.language ? [repoInfo.language] : ["Unknown"],
+                architecture: "Analysis failed — please try again",
+                keyFeatures: ["Unable to complete analysis. Please try again."],
+            },
+            usageMetadata: undefined,
         };
     }
 }

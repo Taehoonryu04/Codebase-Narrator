@@ -18,6 +18,26 @@ export interface FileNode {
     content?: string;
 }
 
+// Performance & cost stats returned alongside analysis / chat
+export interface AnalysisStats {
+    executionTimeMs: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+    totalFiles: number;
+    filesSent: number;
+    contextEfficiencyPct: number; // % of files filtered out before LLM
+}
+
+export interface ChatStats {
+    ragRetrievalMs: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+}
+
 // 분석 결과 타입
 export interface AnalysisResult {
     repoInfo: GitHubRepo;
@@ -38,4 +58,5 @@ export interface AnalysisResult {
     analyzedFiles: number;
     totalFiles: number;
     timestamp: string;
+    stats?: AnalysisStats;
 }

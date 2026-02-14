@@ -8,12 +8,13 @@ import {
 } from "@/lib/github";
 import { analyzeCodebase } from "@/lib/ai/gemini";
 import { analyzeRequestSchema, formatZodError } from "@/lib/validation";
-import type { AnalysisResult } from "@/lib/types";
+import type { AnalysisResult, AnalysisStats } from "@/lib/types";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db/prisma";
 import { Octokit } from "@octokit/rest";
 import { checkAndIncrementAnalysis, windowLabel } from "@/lib/rate-limit";
 import { storeEmbeddings } from "@/lib/ai/rag";
+import { logUsage, checkAnonAnalysisLimit, estimateCost } from "@/lib/usage";
 
 /**
  * POST /api/analyze
@@ -31,6 +32,12 @@ import { storeEmbeddings } from "@/lib/ai/rag";
  * 8. Return typed AnalysisResult
  */
 export async function POST(request: NextRequest) {
+    const startTime = Date.now();
+    const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        request.headers.get("x-real-ip") ??
+        "unknown";
+
     try {
         // Step 1: Parse & validate
         const body = await request.json();
@@ -68,7 +75,22 @@ export async function POST(request: NextRequest) {
             console.warn("⚠️ Failed to get user session, continuing with default token:", error);
         }
 
-        // Step 2b: Enforce rate limit (authenticated users only)
+        // Step 2b-anon: Enforce 1 analysis/day for unauthenticated users
+        if (!authenticatedUserId) {
+            const allowed = await checkAnonAnalysisLimit(ip);
+            if (!allowed) {
+                console.log(`🚫 Anon rate limit exceeded for IP ${ip}`);
+                return NextResponse.json(
+                    {
+                        error: "Guest analysis limit reached (1/day). Sign in with GitHub for unlimited analyses.",
+                        upgradeRequired: true,
+                    },
+                    { status: 429 }
+                );
+            }
+        }
+
+        // Step 2c: Enforce rate limit (authenticated users only)
         if (authenticatedUserId) {
             const rateLimit = await checkAndIncrementAnalysis(authenticatedUserId);
             if (!rateLimit.allowed) {
@@ -131,10 +153,31 @@ export async function POST(request: NextRequest) {
 
         // Step 8: Gemini deep analysis
         console.log("🤖 Starting Gemini deep source code analysis...");
-        const analysis = await analyzeCodebase(repoInfo, fileStructure, codebaseTextBlock);
+        const { analysis, usageMetadata } = await analyzeCodebase(repoInfo, fileStructure, codebaseTextBlock);
         console.log("✅ Deep analysis complete");
 
-        // Step 9: Return results
+        // Step 9: Build stats
+        const executionTimeMs = Date.now() - startTime;
+        const inputTokens = usageMetadata?.promptTokenCount ?? 0;
+        const outputTokens = usageMetadata?.candidatesTokenCount ?? 0;
+        const totalTokens = usageMetadata?.totalTokenCount ?? 0;
+        const estimatedCostUsd = estimateCost(inputTokens, outputTokens);
+        const contextEfficiencyPct =
+            fileStructure.length > 0
+                ? Math.round(((fileStructure.length - loadedCount) / fileStructure.length) * 100)
+                : 0;
+
+        const stats: AnalysisStats = {
+            executionTimeMs,
+            inputTokens,
+            outputTokens,
+            totalTokens,
+            estimatedCostUsd,
+            totalFiles: fileStructure.length,
+            filesSent: loadedCount,
+            contextEfficiencyPct,
+        };
+
         const result: AnalysisResult = {
             repoInfo,
             fileStructure,
@@ -142,9 +185,25 @@ export async function POST(request: NextRequest) {
             analyzedFiles: loadedCount,
             totalFiles: fileStructure.length,
             timestamp: new Date().toISOString(),
+            stats,
         };
 
-        console.log(`🎉 Analysis complete! ${loadedCount} files analyzed out of ${fileStructure.length} total`);
+        console.log(`🎉 Analysis complete! ${loadedCount}/${fileStructure.length} files, ${totalTokens} tokens, $${estimatedCostUsd.toFixed(6)}, ${executionTimeMs}ms`);
+
+        // Log usage (fire-and-forget)
+        logUsage({
+            userId: authenticatedUserId,
+            ipAddress: ip,
+            eventType: "analyze",
+            repoFullName: repoInfo.fullName,
+            executionTimeMs,
+            inputTokens,
+            outputTokens,
+            totalTokens,
+            totalFiles: fileStructure.length,
+            filesSent: loadedCount,
+            estimatedCostUsd,
+        });
 
         // Step 10: Store embeddings for RAG (authenticated users only, fire-and-forget)
         if (authenticatedUserId) {
