@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { embedText, embedBatch } from "./embeddings";
+import { embedText } from "./embeddings";
+import { randomUUID } from "crypto";
 
 // Service-role client for server-side vector operations (bypasses RLS)
 function getSupabaseAdmin() {
@@ -8,6 +9,8 @@ function getSupabaseAdmin() {
         process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 }
+
+const BATCH_DELAY_MS = 200;
 
 // ~500 tokens ≈ ~2000 characters
 const CHUNK_SIZE = 2000;
@@ -66,7 +69,8 @@ export function chunkFile(filePath: string, content: string): CodeChunk[] {
 
 /**
  * Chunk, embed, and upsert file contents into Supabase code_embeddings table.
- * Deletes existing embeddings for this user+repo before inserting fresh ones.
+ * Uses atomic swap: old embeddings remain searchable until new batch is fully ready.
+ * Progress is tracked in the embedding_jobs table for frontend polling.
  */
 export async function storeEmbeddings(
     userId: string,
@@ -74,18 +78,7 @@ export async function storeEmbeddings(
     fileContents: Array<{ path: string; content: string | null }>
 ): Promise<void> {
     const supabase = getSupabaseAdmin();
-
-    // Delete stale embeddings for this repo
-    const { error: deleteError } = await supabase
-        .from("code_embeddings")
-        .delete()
-        .eq("user_id", userId)
-        .eq("repo_full_name", repoFullName);
-
-    if (deleteError) {
-        console.error("❌ Failed to delete old embeddings:", deleteError.message);
-        throw deleteError;
-    }
+    const batchId = randomUUID();
 
     // Build all chunks
     const allChunks: CodeChunk[] = [];
@@ -99,34 +92,114 @@ export async function storeEmbeddings(
         return;
     }
 
-    console.log(`📦 Embedding ${allChunks.length} chunks for ${repoFullName}...`);
+    // Create job record for progress tracking
+    const { error: jobError } = await supabase
+        .from("embedding_jobs")
+        .insert({
+            user_id: userId,
+            repo_full_name: repoFullName,
+            batch_id: batchId,
+            status: "in_progress",
+            total_chunks: allChunks.length,
+            embedded_chunks: 0,
+        });
 
-    // Embed all chunk texts
-    const texts = allChunks.map((c) => `File: ${c.filePath}\n\n${c.content}`);
-    const embeddings = await embedBatch(texts);
-
-    // Insert rows (now includes start_line / end_line)
-    const rows = allChunks.map((chunk, i) => ({
-        user_id: userId,
-        repo_full_name: repoFullName,
-        file_path: chunk.filePath,
-        chunk_index: chunk.chunkIndex,
-        content: chunk.content,
-        start_line: chunk.startLine,
-        end_line: chunk.endLine,
-        embedding: embeddings[i],
-    }));
-
-    const { error: insertError } = await supabase
-        .from("code_embeddings")
-        .insert(rows);
-
-    if (insertError) {
-        console.error("❌ Failed to insert embeddings:", insertError.message);
-        throw insertError;
+    if (jobError) {
+        console.error("❌ Failed to create embedding job:", jobError.message);
+        throw jobError;
     }
 
-    console.log(`✅ Stored ${rows.length} embeddings for ${repoFullName}`);
+    console.log(`📦 Embedding ${allChunks.length} chunks for ${repoFullName} (batch ${batchId.slice(0, 8)})...`);
+
+    try {
+        // Embed chunks sequentially with progress updates
+        const embeddings: number[][] = [];
+
+        for (let i = 0; i < allChunks.length; i++) {
+            const text = `File: ${allChunks[i].filePath}\n\n${allChunks[i].content}`;
+            const embedding = await embedText(text);
+            embeddings.push(embedding);
+
+            // Update progress every 10 chunks
+            if ((i + 1) % 10 === 0 || i === allChunks.length - 1) {
+                await supabase
+                    .from("embedding_jobs")
+                    .update({ embedded_chunks: i + 1 })
+                    .eq("batch_id", batchId);
+            }
+
+            // Rate-limit delay between embeddings
+            if (i < allChunks.length - 1) {
+                await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+            }
+        }
+
+        // Insert new embeddings with batch_id
+        const rows = allChunks.map((chunk, i) => ({
+            user_id: userId,
+            repo_full_name: repoFullName,
+            file_path: chunk.filePath,
+            chunk_index: chunk.chunkIndex,
+            content: chunk.content,
+            start_line: chunk.startLine,
+            end_line: chunk.endLine,
+            embedding: embeddings[i],
+            batch_id: batchId,
+        }));
+
+        const { error: insertError } = await supabase
+            .from("code_embeddings")
+            .insert(rows);
+
+        if (insertError) {
+            throw insertError;
+        }
+
+        // Atomic swap: delete old embeddings (different batch_id)
+        const { error: deleteError } = await supabase
+            .from("code_embeddings")
+            .delete()
+            .eq("user_id", userId)
+            .eq("repo_full_name", repoFullName)
+            .neq("batch_id", batchId);
+
+        if (deleteError) {
+            console.warn("⚠️ Old embedding cleanup failed (non-critical):", deleteError.message);
+        }
+
+        // Mark job completed
+        await supabase
+            .from("embedding_jobs")
+            .update({
+                status: "completed",
+                embedded_chunks: allChunks.length,
+                completed_at: new Date().toISOString(),
+            })
+            .eq("batch_id", batchId);
+
+        console.log(`✅ Stored ${rows.length} embeddings for ${repoFullName} (batch ${batchId.slice(0, 8)})`);
+    } catch (err) {
+        // Mark job failed
+        await supabase
+            .from("embedding_jobs")
+            .update({
+                status: "failed",
+                error_message: err instanceof Error ? err.message : "Unknown error",
+                completed_at: new Date().toISOString(),
+            })
+            .eq("batch_id", batchId);
+
+        // Clean up any partially inserted new-batch rows
+        await supabase
+            .from("code_embeddings")
+            .delete()
+            .eq("user_id", userId)
+            .eq("repo_full_name", repoFullName)
+            .eq("batch_id", batchId);
+
+        console.error(`❌ Embedding failed for ${repoFullName} (batch ${batchId.slice(0, 8)}):`, err);
+        throw err;
+    }
 }
 
 type RpcRow = {

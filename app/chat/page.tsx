@@ -55,6 +55,13 @@ export default function ChatPage() {
     const [error, setError] = useState<string | null>(null);
     const [chatRemaining, setChatRemaining] = useState<number | null>(null);
     const [activeSource, setActiveSource] = useState<SourceChunk | null>(null);
+    const [embeddingStatus, setEmbeddingStatus] = useState<{
+        status: "none" | "in_progress" | "completed" | "failed";
+        progressPct: number;
+        totalChunks: number;
+        embeddedChunks: number;
+        errorMessage?: string;
+    } | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -145,6 +152,32 @@ export default function ChatPage() {
             fetchRateLimit();
         }
     }, [user, fetchRepos, fetchRateLimit]);
+
+    // Poll embedding status when a repo is selected
+    useEffect(() => {
+        if (!user || !selectedRepo) {
+            setEmbeddingStatus(null);
+            return;
+        }
+
+        let active = true;
+        let pollTimer: ReturnType<typeof setTimeout>;
+
+        const poll = async () => {
+            try {
+                const res = await fetch(`/api/embeddings/status?repo=${encodeURIComponent(selectedRepo)}`);
+                if (!active || !res.ok) return;
+                const data = await res.json();
+                setEmbeddingStatus(data);
+                if (data.status === "in_progress") {
+                    pollTimer = setTimeout(poll, 2000);
+                }
+            } catch { /* non-blocking */ }
+        };
+
+        poll();
+        return () => { active = false; clearTimeout(pollTimer); };
+    }, [user, selectedRepo]);
 
     useEffect(() => {
         return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
@@ -395,6 +428,40 @@ export default function ChatPage() {
                 {/* Chat view */}
                 {!authLoading && user && selectedRepo && (
                     <>
+                        {/* Embedding progress banner */}
+                        <AnimatePresence>
+                            {embeddingStatus?.status === "in_progress" && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="shrink-0 border-b border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-900/20 backdrop-blur-sm"
+                                >
+                                    <div className="max-w-3xl mx-auto px-4 py-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="shrink-0 animate-spin rounded-full h-4 w-4 border-2 border-blue-300 dark:border-blue-600 border-t-blue-600 dark:border-t-blue-300" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                                    Indexing your code... ({embeddingStatus.progressPct}%)
+                                                </p>
+                                                <div className="mt-1.5 h-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-full overflow-hidden">
+                                                    <motion.div
+                                                        className="h-full bg-blue-500 dark:bg-blue-400 rounded-full"
+                                                        initial={{ width: 0 }}
+                                                        animate={{ width: `${embeddingStatus.progressPct}%` }}
+                                                        transition={{ duration: 0.5, ease: "easeOut" }}
+                                                    />
+                                                </div>
+                                                <p className="mt-1 text-xs text-blue-500 dark:text-blue-400">
+                                                    {embeddingStatus.embeddedChunks} / {embeddingStatus.totalChunks} chunks embedded
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         {/* Messages */}
                         <div className="flex-1 overflow-y-auto px-4 py-6">
                             <div className="max-w-3xl mx-auto space-y-4">
@@ -404,8 +471,17 @@ export default function ChatPage() {
                                         animate={{ opacity: 1 }}
                                         className="text-center py-16 text-neutral-400 dark:text-neutral-600"
                                     >
-                                        <p className="text-lg font-medium mb-2">Ask anything about the codebase</p>
-                                        <p className="text-sm">e.g. &ldquo;How does authentication work?&rdquo; or &ldquo;Explain the data flow&rdquo;</p>
+                                        {embeddingStatus?.status === "in_progress" ? (
+                                            <>
+                                                <p className="text-lg font-medium mb-2">Your codebase is being indexed</p>
+                                                <p className="text-sm">Chat will be ready once indexing completes. You can start asking once it finishes.</p>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <p className="text-lg font-medium mb-2">Ask anything about the codebase</p>
+                                                <p className="text-sm">e.g. &ldquo;How does authentication work?&rdquo; or &ldquo;Explain the data flow&rdquo;</p>
+                                            </>
+                                        )}
                                     </motion.div>
                                 )}
 

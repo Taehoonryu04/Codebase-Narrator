@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE, Phase 5-2 (Architectural Visualizer) ✅ DONE, Phase 5-3 (Performance & Cost Monitoring) ✅ DONE.
+**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE, Phase 5-2 (Architectural Visualizer) ✅ DONE, Phase 5-3 (Performance & Cost Monitoring) ✅ DONE, Phase 5-4 (Embedding Reliability) ✅ DONE.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -164,13 +164,17 @@ Run `npx prisma migrate dev` after schema changes.
 - Embedding model: `gemini-embedding-001` with `outputDimensionality: 768` (MRL truncation) → `lib/ai/embeddings.ts`
   - NOTE: `text-embedding-004` is deprecated (404). Use `gemini-embedding-001` only.
   - NOTE: Do NOT use `apiVersion: "v1"` — default v1beta works for this model.
-  - Sequential embedding: BATCH_SIZE=1, BATCH_DELAY_MS=500 (free tier rate limit workaround)
+  - Sequential embedding: BATCH_SIZE=1, BATCH_DELAY_MS=200 (~5 req/s, within 1500 RPM free-tier limit)
 - `code_embeddings` table in Supabase: `vector(768)`, `hnsw` index (ivfflat also works at 768 dims)
 - Also has `content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED` + GIN index for FTS (Phase 4.2)
 - Vector search RPC: `match_code_chunks(query_embedding, match_user_id, match_repo, match_count)`
 - Keyword search RPC: `keyword_search_code_chunks(match_user_id, match_repo, keyword_query, match_count)` — uses `websearch_to_tsquery` + `ts_rank`
 - Migration SQL: `supabase/migrations/001_hybrid_search.sql`
 - Embeddings stored fire-and-forget after analysis in `POST /api/analyze` (step 10, authenticated users only)
+- **Atomic swap re-embedding** (`lib/ai/rag.ts:storeEmbeddings`): new batch inserted with UUID `batch_id`, old batch deleted only after new batch is fully committed — old embeddings remain searchable throughout; no race condition when navigating to chat immediately after analysis
+- **Embedding job tracking**: `embedding_jobs` table (migration `supabase/migrations/004_embedding_jobs.sql`) — `status` (in_progress/completed/failed), `total_chunks`, `embedded_chunks`, `batch_id`; progress updated every 10 chunks
+- **Embedding status API**: `GET /api/embeddings/status?repo=owner/repo` (`app/api/embeddings/status/route.ts`) — returns `{ status, progressPct, totalChunks, embeddedChunks, ... }`; chat page polls every 2s while in_progress
+- **Chat UI progress banner**: animated blue banner + progress bar shown when `embeddingStatus.status === "in_progress"`; empty state message changes to "Your codebase is being indexed"
 - At chat time: embed user query → `searchSimilarChunks()` → `buildRagContext()` → inject top-k chunks as context
 - Cascade deletion: embeddings deleted when analysis is deleted via `DELETE /api/history/[id]` (service-role client, deletes by `user_id + repo_full_name`)
 
@@ -273,7 +277,7 @@ Run `npx prisma migrate dev` after schema changes.
   - `components/chat/MermaidDiagram.tsx`: renders SVG from mermaid code, toolbar with Download SVG + Expand buttons, fullscreen modal overlay, amber fallback on parse error (shows raw source)
   - `components/chat/MessageContent.tsx`: `react-markdown` + `remark-gfm` renderer — detects ` ```mermaid ` blocks → `MermaidDiagram`; styled renderers for code blocks, lists, headings, blockquotes
   - `app/chat/page.tsx`: completed model messages now render via `<MessageContent>` (markdown+mermaid); streaming bubble stays plain text (in-progress chars, not final)
-  - `sanitizeMermaid()` pre-processor in `MermaidDiagram.tsx` fixes common AI violations before rendering: strips trailing `;`, removes `()` from inside `[...]`/`{...}` labels, replaces dots in node IDs (`D6.1` → `D6_1`)
+  - `sanitizeMermaid()` pre-processor in `MermaidDiagram.tsx` fixes common AI violations before rendering: strips `%%` comments, strips trailing `;`, cleans `[...]`/`{...}`/`(...)` labels (removes `()[]` backticks, converts `"` to `'`), wraps labels with `/` in `"..."` to prevent parallelogram parsing, wraps subgraph titles in `"..."` (handled first via early return), replaces dots in node IDs (`D6.1` → `D6_1`)
   - System prompt in `app/api/chat/route.ts` updated: instructs AI to generate diagrams for flows/architecture, includes strict syntax rules (no parens, no dots in node IDs, no arrows in labels), and requires auth/error paths + complete response lifecycle in flow diagrams
 - [x] **Performance & Cost Monitoring** ✅ DONE
   - `supabase/migrations/003_usage_logs.sql`: `usage_logs` table — tracks `user_id`, `ip_address`, `event_type` ('analyze'|'chat'), `execution_time_ms`, `rag_retrieval_ms`, `input_tokens`, `output_tokens`, `total_tokens`, `total_files`, `files_sent`, `estimated_cost_usd`; indexes on IP (anon) and user_id
@@ -286,6 +290,12 @@ Run `npx prisma migrate dev` after schema changes.
   - `app/chat/page.tsx`: `statsRef` captures stats from `done` event; per-message inline stats rendered below source chips: `RAG Xs · N tokens · $X.XXXX`
   - `components/main/landing-sections.tsx`: guest tier updated to "1 free analysis per day"
   - **Required action**: Run `supabase/migrations/003_usage_logs.sql` in Supabase SQL Editor before deploying
+- [x] **Embedding Reliability** ✅ DONE
+  - Atomic swap: `storeEmbeddings()` inserts new batch with UUID `batch_id`, deletes old batch only after full commit — no downtime for existing chat users
+  - `embedding_jobs` table tracks `status`/`total_chunks`/`embedded_chunks` per batch; `batch_id` column added to `code_embeddings` with `DEFAULT gen_random_uuid()` (backfills existing rows)
+  - `GET /api/embeddings/status` polls latest job for a user+repo; chat page polls every 2s, shows animated progress banner + progress bar
+  - `BATCH_DELAY_MS` reduced 500 → 200ms (sequential, ~5 req/s, well within 1500 RPM free-tier limit)
+  - Migration: `supabase/migrations/004_embedding_jobs.sql` — **run in Supabase SQL Editor**
 - [ ] **AI Code Health Audit**: Structured reports on technical debt, architectural bottlenecks, and security risks with prioritized action items.
 - [ ] **Production Readiness**: CI/CD deployment, mobile responsiveness, and `ARCHITECT.md` documenting the RAG engine design.
 

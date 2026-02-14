@@ -47,8 +47,9 @@ User Input (GitHub URL)
       7. Parse JSON response → return AnalysisResult
       8. Store embeddings fire-and-forget (authenticated users)
           → chunk files (~2000 chars, 200-char overlap)
-          → embed with gemini-embedding-001
-          → upsert to Supabase code_embeddings table
+          → embed with gemini-embedding-001 (sequential, 200ms delay)
+          → atomic swap: insert new batch → delete old (UUID batch_id)
+          → progress tracked in embedding_jobs table (polled by chat UI)
 
 Chat (POST /api/chat)
   → Auth check + rate limit
@@ -81,6 +82,7 @@ app/
 └── api/
     ├── analyze/          # Repository analysis endpoint
     ├── chat/route.ts     # RAG-powered chat endpoint
+    ├── embeddings/       # Embedding status polling endpoint
     ├── history/          # History CRUD
     └── rate-limit/       # Rate limit status
 
@@ -156,8 +158,9 @@ npm run dev              # http://localhost:3000
 
 **Phase 5: Reliability & Architectural Insights** (🚧 In Progress)
 - [x] Source Traceability — clickable source chips with code snippets cited in every AI response; `SourceViewerModal` with line ranges and RRF scores
-- [x] Architectural Visualizer — auto-generated Mermaid diagrams rendered as interactive SVGs (flowcharts, class diagrams, sequence diagrams) with download + fullscreen
+- [x] Architectural Visualizer — auto-generated Mermaid diagrams rendered as interactive SVGs (flowcharts, class diagrams, sequence diagrams) with download + fullscreen; robust sanitizer handles common AI syntax violations
 - [x] Performance & Cost Monitoring — per-analysis and per-chat stats (execution time, tokens, cost, context efficiency); `usage_logs` table; guest rate limit (1/day by IP)
+- [x] Embedding Progress Tracking — atomic swap re-embedding with `embedding_jobs` table; live progress banner in chat UI (polls every 2s while indexing)
 - [ ] AI Code Health Audit — structured reports on technical debt, bottlenecks, and security risks
 - [ ] Production Readiness — CI/CD, mobile optimization, and `ARCHITECT.md` for RAG engine design
 
@@ -166,9 +169,10 @@ npm run dev              # http://localhost:3000
 ## Design Decisions
 
 - **RAG over full-context:** Code files are chunked and embedded rather than dumped wholesale into the LLM context, keeping costs low and retrieval precise.
-- **Fire-and-forget embedding:** Embeddings are generated asynchronously after analysis so the user gets their result immediately without waiting for vector ingestion.
+- **Fire-and-forget embedding:** Embeddings are generated asynchronously after analysis so the user gets their result immediately without waiting for vector ingestion. Progress is tracked in an `embedding_jobs` table and polled by the chat UI.
+- **Atomic swap re-embedding:** On re-analysis, old embeddings stay live and searchable until the full new batch is committed, then deleted in one operation (UUID `batch_id` per batch). No downtime or empty-state race condition.
 - **User-scoped embeddings:** Each user's code chunks are stored with their `user_id`, so search is always scoped — no cross-user data leakage.
-- **Sequential embedding with backoff:** Free-tier Gemini rate limits are respected by processing one chunk at a time with a 500ms delay between calls.
+- **Sequential embedding with backoff:** Free-tier Gemini rate limits are respected by processing one chunk at a time with a 200ms delay between calls (~5 req/s, well within the 1500 RPM free-tier limit).
 
 ---
 

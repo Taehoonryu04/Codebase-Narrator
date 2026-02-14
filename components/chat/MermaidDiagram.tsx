@@ -16,6 +16,7 @@ function sanitizeMermaid(raw: string): string {
     const cleanLabel = (inner: string) =>
         inner
             .replace(/[()]/g, "")      // parentheses break flowchart parser
+            .replace(/[\[\]]/g, "")    // square brackets cause shape-delimiter confusion when nested
             .replace(/`/g, "")         // backticks trigger mermaid markdown mode in v10+
             .replace(/"/g, "'");       // double-quotes inside a label break the lexer
 
@@ -25,14 +26,27 @@ function sanitizeMermaid(raw: string): string {
             line = stripComment(line);
             // Strip trailing semicolons (not valid in flowchart TD)
             line = line.replace(/;\s*$/, "");
+            // Subgraph titles — handle first, wrap in quotes to safely contain / and special chars
+            if (/^\s*subgraph\b/.test(line)) {
+                return line.replace(/^(\s*subgraph\s+)(.+)$/, (_, prefix, title) => {
+                    const cleaned = title.replace(/[()"`\[\]{}]/g, "").trim();
+                    return `${prefix}"${cleaned}"`;
+                });
+            }
             // Clean inside square-bracket labels [...]
-            line = line.replace(/\[([^\]]*)\]/g, (_, inner) => `[${cleanLabel(inner)}]`);
+            // Wrap in quotes if label contains / to prevent parallelogram interpretation
+            line = line.replace(/\[([^\]]*)\]/g, (_, inner) => {
+                const cleaned = cleanLabel(inner);
+                return cleaned.includes("/") ? `["${cleaned}"]` : `[${cleaned}]`;
+            });
             // Clean inside curly-brace labels {...}
             line = line.replace(/\{([^}]*)\}/g, (_, inner) => `{${cleanLabel(inner)}}`);
-            // Clean subgraph title lines (subgraph title may not contain special chars)
-            if (/^\s*subgraph\b/.test(line)) {
-                line = line.replace(/[()"`]/g, "");
-            }
+            // Clean inside round-paren node labels: word(content)
+            // Lookbehind ensures we only match node definitions, not stray text
+            line = line.replace(/(?<=\w)\(([^)]*)\)/g, (_, inner) => {
+                const cleaned = cleanLabel(inner);
+                return cleaned.includes("/") ? `("${cleaned}")` : `(${cleaned})`;
+            });
             // Replace dots in node IDs (e.g. D6.1 -> D6_1)
             line = line.replace(/\b(\w+)\.(\w+)\b(?=\s*(?:[\[{(]|-->|--))/g, "$1_$2");
             return line;
