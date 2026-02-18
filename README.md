@@ -21,6 +21,39 @@ Built to demonstrate production-grade system design — not just "call an LLM an
 
 ---
 
+## Live Demo & Resource Management
+
+**Status: Live demo is in Read-Only / Sample-Access mode.**
+
+The hosted instance operates on free-tier infrastructure (Google Gemini API, Supabase pgvector). To ensure sustained availability for all visitors without exhausting quota, **new repository analysis is restricted to the administrator account**. All other features are fully accessible.
+
+### What you can do as a visitor
+
+| Feature | Available |
+|---|---|
+| Browse pre-analyzed sample repositories | ✅ |
+| RAG-powered chat (vector + FTS hybrid search) | ✅ |
+| Source traceability — clickable file + line citations | ✅ |
+| Mermaid architecture diagram rendering | ✅ |
+| AI Code Health Audit (security / maintainability / architecture) | ✅ |
+| Professional PDF export | ✅ |
+| New repository analysis | 🔒 Admin only |
+
+### Why this restriction exists
+
+Each analysis call consumes Gemini 2.5 Flash tokens (typically 50k–200k per request), triggers sequential embedding API calls for every file chunk (≥500ms per batch to respect free-tier RPM limits), and writes to Supabase pgvector. Unrestricted public access would exhaust these quotas within hours.
+
+The admin guard is enforced at the API layer in `POST /api/analyze`: if the `ADMIN_EMAIL` environment variable is set, any request from a non-matching authenticated email — or any unauthenticated request — receives a `403 adminOnly` response before a single GitHub or Gemini API call is made. This keeps resource consumption deterministic and cost-attributable.
+
+### Engineering note
+
+This is a **deliberate architectural decision**, not a shortcoming. It demonstrates two production concerns relevant to systems built on consumption-billed infrastructure:
+
+1. **Cost-effective infrastructure management** — enforce hard gates at the cheapest possible point in the request lifecycle (before any paid API is touched), log every token and USD estimate to `usage_logs`, and expose per-request telemetry inline in the UI so cost is always visible.
+2. **Multi-tier rate limiting** — authenticated users have a 24-hour rolling window enforced by Prisma (`RateLimit` table); anonymous visitors are capped by IP via `usage_logs` (Supabase); the admin guard is a third, hardest layer above both, toggled by a single environment variable with no code change required.
+
+---
+
 ## Tech Stack
 
 **Frontend**

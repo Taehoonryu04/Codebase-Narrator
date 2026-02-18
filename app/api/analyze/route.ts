@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
         // Step 2: Get authenticated user's GitHub token (if available)
         let userOctokit: Octokit | undefined;
         let authenticatedUserId: string | null = null;
+        let userEmail: string | null = null;
         try {
             const supabase = await createClient();
             const { data: { session } } = await supabase.auth.getSession();
@@ -68,11 +69,26 @@ export async function POST(request: NextRequest) {
                     auth: session.provider_token,
                 });
                 authenticatedUserId = session.user?.id ?? null;
+                userEmail = session.user?.email ?? null;
             } else {
                 console.log("👤 Anonymous user - using default GitHub token");
             }
         } catch (error) {
             console.warn("⚠️ Failed to get user session, continuing with default token:", error);
+        }
+
+        // Step 2a: Admin guard — fail-closed: block everyone unless userEmail === ADMIN_EMAIL.
+        // If ADMIN_EMAIL is unset, all requests are blocked (no accidental open access).
+        const adminEmail = process.env.ADMIN_EMAIL;
+        if (!adminEmail || userEmail !== adminEmail) {
+            console.log(`🔒 Admin guard: blocked analysis request from ${userEmail ?? "anonymous"}`);
+            return NextResponse.json(
+                {
+                    error: "Analysis is currently limited to the admin to maintain free-tier resource stability. Please explore the pre-analyzed samples below.",
+                    adminOnly: true,
+                },
+                { status: 403 }
+            );
         }
 
         // Step 2b-anon: Enforce 1 analysis/day for unauthenticated users
