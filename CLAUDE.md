@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 5 ✅ COMPLETE (5-1 Source Traceability, 5-2 Architectural Visualizer, 5-3 Performance & Cost Monitoring, 5-4 Embedding Reliability, 5-5 AI Code Health Audit, 5-6 Professional PDF Export). Next: Phase 6 (Production Readiness).
+**Current Phase:** Phase 6 🚧 IN PROGRESS (Production Readiness). Phase 5 ✅ COMPLETE.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -90,12 +90,14 @@ app/
 ├── auth/                 # Auth callback pages
 ├── history/page.tsx      # User analysis history
 ├── chat/page.tsx         # Codebase chat interface
+├── profile/page.tsx      # User profile, usage dashboard, account deletion
 └── api/
     ├── analyze/          # Repository analysis endpoint
     ├── auth/             # NextAuth routes
     ├── history/          # User history CRUD
     ├── chat/route.ts     # RAG-powered chat — POST /api/chat
-    └── rate-limit/       # Rate limit status endpoint
+    ├── rate-limit/       # Rate limit status endpoint
+    └── user/route.ts     # DELETE /api/user — account deletion
 
 components/
 ├── analyze/              # Analysis feature components
@@ -269,7 +271,25 @@ Run `npx prisma migrate dev` after schema changes.
 - [x] **Embedding Reliability** — Atomic swap in `storeEmbeddings()` (UUID `batch_id`); `embedding_jobs` table tracks progress; `GET /api/embeddings/status` polled every 2s by chat UI; progress banner shown while indexing. Migration: `004_embedding_jobs.sql`.
 - [x] **AI Code Health Audit** — `healthAudit` field in Gemini response (`security`/`maintainability`/`architecture` with scores + findings); types in `lib/types/index.ts`; `AnalysisResult.tsx` has two-tab layout (Overview + Health Audit) with `ScoreRing`, `FindingCard`, `SeverityBadge`.
 - [x] **Professional PDF Export** — `@react-pdf/renderer` (client-side, vector PDF, SSR-safe via `next/dynamic`); `components/analyze/AnalysisPdfDocument.tsx` (cover block + all overview sections + health audit with severity colors); `components/analyze/ExportPdfButton.tsx` (blob → download); button in `AnalysisResult.tsx` header top-right.
-- [ ] **Production Readiness**: CI/CD deployment, mobile responsiveness, `ARCHITECT.md` for RAG engine design.
+
+
+### Phase 6: Production Readiness 🚧 IN PROGRESS
+
+- [x] **User Profile Page** — `app/profile/page.tsx` (client component)
+  - User info card: GitHub avatar, username, email, member-since date (from Supabase Auth `user_metadata`)
+  - Usage dashboard: animated progress bars for analysis + chat quotas fetched from `GET /api/rate-limit`; shows `∞` when limit is 9999 (dev mode); sustainability note for free-tier users
+  - Account actions: Sign Out (Supabase `signOut()`), Delete Account with typed confirmation modal (must type `"delete"` to enable)
+  - `DELETE /api/user` (`app/api/user/route.ts`): deletes `code_embeddings` + `embedding_jobs` (Supabase admin), `Analysis` + `RateLimit` (Prisma), then `auth.admin.deleteUser` to invalidate account
+  - Profile link added to `UserMenu` dropdown (`components/auth/UserMenu.tsx`)
+- [ ] CI/CD deployment
+- [ ] Mobile responsiveness audit
+- [ ] `ARCHITECT.md` for RAG engine design
+
+**Profile Page (`app/profile/page.tsx`):**
+- Auth guard: redirects unauthenticated users to `/`
+- Fetches usage via `GET /api/rate-limit` on mount
+- Delete flow: `DELETE /api/user` → `signOut()` → `router.push("/")`; error surfaced inline below the delete button
+- Framer Motion entry animations (staggered cards), `AnimatePresence` for delete modal
 
 ## Quality Bar
 
