@@ -77,8 +77,57 @@ CRITICAL RULES:
     "improvements": ["Specific improvement suggestion", "Another suggestion"]
   },
   "dataFlow": "Trace the main data flow from user input to final output, referencing actual files. (e.g., 'User submits URL in AnalyzeForm → POST /api/analyze → parseGitHubUrl() → getRepoInfo() → getRepoFileTree() → Gemini AI → AnalysisResult rendered by AnalysisResult.tsx')",
-  "entryPoints": ["List actual entry point files found in the codebase"]
-}`;
+  "entryPoints": ["List actual entry point files found in the codebase"],
+  "healthAudit": {
+    "security": {
+      "score": 85,
+      "findings": [
+        {
+          "severity": "critical|high|medium|low",
+          "title": "Short finding title",
+          "description": "What the issue is and where it was found in the code",
+          "file": "path/to/file.ts (optional, omit if not file-specific)",
+          "recommendation": "Concrete fix — e.g., 'Move secret to environment variable and add to .gitignore'"
+        }
+      ]
+    },
+    "maintainability": {
+      "index": 72,
+      "findings": [
+        {
+          "type": "god_class|circular_dependency|complex_logic|other",
+          "severity": "critical|high|medium|low",
+          "title": "Short finding title",
+          "description": "What makes this hard to maintain, with evidence from source code",
+          "file": "path/to/file.ts (optional)",
+          "recommendation": "Concrete refactoring suggestion"
+        }
+      ]
+    },
+    "architecture": {
+      "rating": 78,
+      "pattern": "Detected pattern name (e.g., 'MVC', 'MVVM', 'Clean Architecture', 'Layered')",
+      "findings": [
+        {
+          "severity": "critical|high|medium|low",
+          "title": "Short finding title",
+          "description": "Specific architectural violation or concern observed in the code",
+          "recommendation": "How to align with the detected pattern or industry best practices"
+        }
+      ]
+    }
+  }
+}
+
+HEALTH AUDIT RULES:
+- Security score, maintainability index, and architecture rating are 0–100 integers.
+- severity must be exactly one of: "critical", "high", "medium", "low".
+- Use "critical" only for issues that could cause data loss, exposure of secrets, or system crashes.
+- Use "high" for significant risks that require near-term action.
+- Use "medium" for code smells or suboptimal patterns.
+- Use "low" for minor style or documentation gaps.
+- Limit findings to the most impactful ones (max 5 per category). Prioritize actionable items.
+- Every finding must be grounded in actual code you read — do not fabricate issues.`;
 }
 
 /**
@@ -101,6 +150,39 @@ interface AnalysisOutput {
     };
     dataFlow?: string;
     entryPoints?: string[];
+    healthAudit?: {
+        security: {
+            score: number;
+            findings: Array<{
+                severity: "critical" | "high" | "medium" | "low";
+                title: string;
+                description: string;
+                file?: string;
+                recommendation: string;
+            }>;
+        };
+        maintainability: {
+            index: number;
+            findings: Array<{
+                type: "god_class" | "circular_dependency" | "complex_logic" | "other";
+                severity: "critical" | "high" | "medium" | "low";
+                title: string;
+                description: string;
+                file?: string;
+                recommendation: string;
+            }>;
+        };
+        architecture: {
+            rating: number;
+            pattern: string;
+            findings: Array<{
+                severity: "critical" | "high" | "medium" | "low";
+                title: string;
+                description: string;
+                recommendation: string;
+            }>;
+        };
+    };
 }
 
 interface UsageMetadata {

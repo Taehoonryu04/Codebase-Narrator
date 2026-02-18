@@ -38,6 +38,49 @@ export interface ChatStats {
     estimatedCostUsd: number;
 }
 
+export type AuditSeverity = "critical" | "high" | "medium" | "low";
+export type MaintainabilityFindingType = "god_class" | "circular_dependency" | "complex_logic" | "other";
+
+export interface SecurityFinding {
+    severity: AuditSeverity;
+    title: string;
+    description: string;
+    file?: string;
+    recommendation: string;
+}
+
+export interface MaintainabilityFinding {
+    type: MaintainabilityFindingType;
+    severity: AuditSeverity;
+    title: string;
+    description: string;
+    file?: string;
+    recommendation: string;
+}
+
+export interface ArchitectureFinding {
+    severity: AuditSeverity;
+    title: string;
+    description: string;
+    recommendation: string;
+}
+
+export interface HealthAudit {
+    security: {
+        score: number;
+        findings: SecurityFinding[];
+    };
+    maintainability: {
+        index: number;
+        findings: MaintainabilityFinding[];
+    };
+    architecture: {
+        rating: number;
+        pattern: string;
+        findings: ArchitectureFinding[];
+    };
+}
+
 // 분석 결과 타입
 export interface AnalysisResult {
     repoInfo: GitHubRepo;
@@ -54,6 +97,7 @@ export interface AnalysisResult {
         };
         dataFlow?: string;
         entryPoints?: string[];
+        healthAudit?: HealthAudit;
     };
     analyzedFiles: number;
     totalFiles: number;

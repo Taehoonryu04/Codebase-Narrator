@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE, Phase 5-2 (Architectural Visualizer) ✅ DONE, Phase 5-3 (Performance & Cost Monitoring) ✅ DONE, Phase 5-4 (Embedding Reliability) ✅ DONE.
+**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE, Phase 5-2 (Architectural Visualizer) ✅ DONE, Phase 5-3 (Performance & Cost Monitoring) ✅ DONE, Phase 5-4 (Embedding Reliability) ✅ DONE, Phase 5-5 (AI Code Health Audit) ✅ DONE.
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -296,7 +296,11 @@ Run `npx prisma migrate dev` after schema changes.
   - `GET /api/embeddings/status` polls latest job for a user+repo; chat page polls every 2s, shows animated progress banner + progress bar
   - `BATCH_DELAY_MS` reduced 500 → 200ms (sequential, ~5 req/s, well within 1500 RPM free-tier limit)
   - Migration: `supabase/migrations/004_embedding_jobs.sql` — **run in Supabase SQL Editor**
-- [ ] **AI Code Health Audit**: Structured reports on technical debt, architectural bottlenecks, and security risks with prioritized action items.
+- [x] **AI Code Health Audit** ✅ DONE
+  - Gemini prompt extended to return `healthAudit` JSON: `security` (score 0-100 + findings), `maintainability` (index + typed findings: `god_class|circular_dependency|complex_logic|other`), `architecture` (rating + pattern + findings)
+  - `lib/types/index.ts`: `AuditSeverity`, `MaintainabilityFindingType`, `SecurityFinding`, `MaintainabilityFinding`, `ArchitectureFinding`, `HealthAudit` interfaces; `healthAudit?: HealthAudit` added to `AnalysisResult.analysis`
+  - `lib/ai/gemini.ts`: `AnalysisOutput` updated; prompt includes severity rules (critical/high/medium/low), max 5 findings per category, must be grounded in actual code read
+  - `components/analyze/AnalysisResult.tsx`: two-tab layout — **Overview** (existing content extracted to `OverviewTab`) + **Health Audit** (new `HealthAuditTab`); `ScoreRing` (SVG circular progress), `FindingCard` (severity-bordered cards with title/description/file/recommendation), `SeverityBadge`; tab underline animated via `layoutId="tab-underline"` (Framer Motion); Health Audit tab shows "N/A" badge when no audit data
 - [ ] **Production Readiness**: CI/CD deployment, mobile responsiveness, and `ARCHITECT.md` documenting the RAG engine design.
 
 ## Quality Bar
