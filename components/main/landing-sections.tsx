@@ -117,6 +117,11 @@ function ChatPreview() {
         { role: "ai",   text: "Rate limiting lives in lib/rate-limit.ts. It uses a Prisma RateLimit table to track analysisCount and chatCount per user in 24-hour rolling windows, returning 429 with Retry-After headers when exceeded." },
     ];
 
+    const sourceChips = [
+        { file: "lib/rate-limit.ts", line: "12", badge: "both", color: "violet" },
+        { file: "app/api/analyze/route.ts", line: "58", badge: "vector", color: "blue" },
+    ];
+
     return (
         <div ref={ref} className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden shadow-lg">
             <div className="border-b border-neutral-100 dark:border-neutral-800 px-4 py-3 flex items-center gap-2">
@@ -143,6 +148,41 @@ function ChatPreview() {
                         </div>
                     </motion.div>
                 ))}
+                {/* Source citation chips */}
+                <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={inView ? { opacity: 1, y: 0 } : {}}
+                    transition={{ duration: 0.4, delay: 1.4 }}
+                    className="flex flex-wrap gap-1.5 pt-1"
+                >
+                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 self-center mr-1">Sources:</span>
+                    {sourceChips.map((chip) => (
+                        <span key={chip.file} className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border cursor-pointer transition-colors
+                            ${chip.color === "violet"
+                                ? "border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50"
+                                : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                            }`}>
+                            <span>{chip.file}:{chip.line}</span>
+                            <span className={`text-[9px] font-semibold px-1 rounded
+                                ${chip.color === "violet" ? "text-violet-500 dark:text-violet-400" : "text-blue-500 dark:text-blue-400"}`}>
+                                {chip.badge}
+                            </span>
+                        </span>
+                    ))}
+                </motion.div>
+                {/* Per-message stats */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={inView ? { opacity: 1 } : {}}
+                    transition={{ duration: 0.4, delay: 1.6 }}
+                    className="flex items-center gap-2 text-[10px] text-neutral-400 dark:text-neutral-600 pt-0.5"
+                >
+                    <span>RAG 1.2s</span>
+                    <span>·</span>
+                    <span>842 tokens</span>
+                    <span>·</span>
+                    <span>$0.0001</span>
+                </motion.div>
             </div>
         </div>
     );
@@ -241,7 +281,7 @@ export function LandingSections() {
                             step="Step 02"
                             title="AI reads every file"
                             description="Gemini 2.5 Flash ingests the entire file tree and source code — up to 50 files, 1M token context — producing a structured, evidence-based analysis."
-                            detail="Architecture, tech stack, key features, data flow trace, and a code quality score."
+                            detail="Files are priority-ranked by importance before selection — entry points, manifests, and source dirs always come first."
                             auth="free"
                             delay={0.2}
                         />
@@ -264,7 +304,7 @@ export function LandingSections() {
                         <StatCard value="1M" label="token context window" delay={0.1} />
                         <StatCard value="50" label="files per analysis" delay={0.2} />
                         <StatCard value="768" label="dim vector embeddings" delay={0.3} />
-                        <StatCard value="RAG" label="semantic code search" delay={0.4} />
+                        <StatCard value="Hybrid" label="vector + keyword search" delay={0.4} />
                     </div>
                 </div>
             </section>
@@ -295,7 +335,8 @@ export function LandingSections() {
                             <Reveal delay={0.25}>
                                 <ul className="mt-8 space-y-3">
                                     {[
-                                        "Answers cite real file paths and function names",
+                                        "Source citations link answers to exact file paths and line numbers",
+                                        "Auto-generated Mermaid diagrams for architecture and data flows",
                                         "Conversation history maintained across messages",
                                         "Works on any analyzed repo — public or private",
                                     ].map((item) => (
@@ -313,6 +354,92 @@ export function LandingSections() {
                         </div>
                         <Reveal delay={0.2}>
                             <ChatPreview />
+                        </Reveal>
+                    </div>
+                </div>
+            </section>
+
+            {/* ── Advanced Chat Features ────────────────────── */}
+            <section className="py-20 px-4 border-y border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/40">
+                <div className="container mx-auto max-w-6xl">
+                    <Reveal className="text-center mb-12">
+                        <span className="text-xs font-semibold tracking-widest text-neutral-400 uppercase">Powered by the chat engine</span>
+                        <h2 className="text-3xl md:text-4xl font-bold mt-3 text-neutral-900 dark:text-white">
+                            Beyond answers — real evidence
+                        </h2>
+                        <p className="text-neutral-500 dark:text-neutral-400 mt-3 text-base max-w-xl mx-auto">
+                            Every chat response is grounded in your actual source code.
+                        </p>
+                    </Reveal>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {/* Source Citations */}
+                        <Reveal delay={0.1}>
+                            <div className="rounded-2xl border border-violet-200 dark:border-violet-800/60 bg-white dark:bg-neutral-900 p-6 h-full flex flex-col gap-4 hover:shadow-md transition-shadow">
+                                <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-950 flex items-center justify-center shrink-0">
+                                    <svg className="w-5 h-5 text-violet-600 dark:text-violet-400" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-neutral-900 dark:text-white mb-1">Source Citations</h3>
+                                    <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                                        Every answer links to the exact file and line number it came from. Click any citation chip to view the raw code snippet in-context.
+                                    </p>
+                                </div>
+                                <div className="mt-auto pt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-wrap gap-1.5">
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300">
+                                        lib/rate-limit.ts:12 · both
+                                    </span>
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300">
+                                        app/api/chat/route.ts:58 · vector
+                                    </span>
+                                </div>
+                            </div>
+                        </Reveal>
+                        {/* Architectural Diagrams */}
+                        <Reveal delay={0.2}>
+                            <div className="rounded-2xl border border-blue-200 dark:border-blue-800/60 bg-white dark:bg-neutral-900 p-6 h-full flex flex-col gap-4 hover:shadow-md transition-shadow">
+                                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950 flex items-center justify-center shrink-0">
+                                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-neutral-900 dark:text-white mb-1">Architectural Diagrams</h3>
+                                    <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                                        Ask about a flow or system and get an interactive Mermaid diagram — download as SVG or expand fullscreen. Auto-generated from your actual code.
+                                    </p>
+                                </div>
+                                <div className="mt-auto pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                                    <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800 p-2.5 font-mono text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                                        <span className="text-blue-500">flowchart</span> TD<br/>
+                                        &nbsp;&nbsp;A[User Input] --&gt; B[Validation]<br/>
+                                        &nbsp;&nbsp;B --&gt; C[GitHub API]<br/>
+                                        &nbsp;&nbsp;C --&gt; D[Gemini AI]
+                                    </div>
+                                </div>
+                            </div>
+                        </Reveal>
+                        {/* Performance Monitoring */}
+                        <Reveal delay={0.3}>
+                            <div className="rounded-2xl border border-amber-200 dark:border-amber-800/60 bg-white dark:bg-neutral-900 p-6 h-full flex flex-col gap-4 hover:shadow-md transition-shadow">
+                                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950 flex items-center justify-center shrink-0">
+                                    <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-neutral-900 dark:text-white mb-1">Performance Monitoring</h3>
+                                    <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                                        Every analysis and chat message shows execution time, token usage, and estimated cost — full transparency into what the AI is doing.
+                                    </p>
+                                </div>
+                                <div className="mt-auto pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+                                    <span className="flex items-center gap-1">⏱ <span className="font-mono text-neutral-700 dark:text-neutral-300">4.2s</span></span>
+                                    <span className="flex items-center gap-1">🔢 <span className="font-mono text-neutral-700 dark:text-neutral-300">12,483</span></span>
+                                    <span className="flex items-center gap-1">💰 <span className="font-mono text-neutral-700 dark:text-neutral-300">$0.0019</span></span>
+                                </div>
+                            </div>
                         </Reveal>
                     </div>
                 </div>
