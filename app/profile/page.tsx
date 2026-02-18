@@ -197,8 +197,9 @@ export default function ProfilePage() {
                 const data = await res.json();
                 throw new Error(data.error || "Deletion failed");
             }
-            // Sign out locally and redirect to home
-            await signOut();
+            // Clear local session — ignore errors since the account is already
+            // deleted server-side and the token is no longer valid.
+            try { await signOut(); } catch { /* session already invalidated */ }
             router.push("/");
         } catch (err) {
             setDeleteError(err instanceof Error ? err.message : "Something went wrong");
