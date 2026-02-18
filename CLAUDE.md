@@ -86,11 +86,13 @@ lib/
 
 app/
 ├── page.tsx              # Landing page
-├── analyze/page.tsx      # Analysis page
+├── analyze/page.tsx      # Analysis page (admin-only guard UX)
 ├── auth/                 # Auth callback pages
 ├── history/page.tsx      # User analysis history
 ├── chat/page.tsx         # Codebase chat interface
 ├── profile/page.tsx      # User profile, usage dashboard, account deletion
+├── samples/
+│   └── codebase-narrator/page.tsx  # Static demo page (no auth, no API)
 └── api/
     ├── analyze/          # Repository analysis endpoint
     ├── auth/             # NextAuth routes
@@ -98,6 +100,9 @@ app/
     ├── chat/route.ts     # RAG-powered chat — POST /api/chat
     ├── rate-limit/       # Rate limit status endpoint
     └── user/route.ts     # DELETE /api/user — account deletion
+
+data/
+└── sample-analysis.ts    # SAMPLE_ANALYSIS (real Gemini run) + SAMPLE_QA (static Q&A)
 
 components/
 ├── analyze/              # Analysis feature components
@@ -282,10 +287,19 @@ Run `npx prisma migrate dev` after schema changes.
   - `DELETE /api/user` (`app/api/user/route.ts`): deletes `code_embeddings` + `embedding_jobs` (Supabase admin), `Analysis` + `RateLimit` (Prisma), then `auth.admin.deleteUser` to invalidate account
   - Profile link added to `UserMenu` dropdown (`components/auth/UserMenu.tsx`)
 - [x] **Admin Guard** — `POST /api/analyze` returns `{ adminOnly: true }` (HTTP 403) for non-admin users; fail-closed: `!ADMIN_EMAIL || userEmail !== ADMIN_EMAIL`
-- [ ] **Featured Sample Page** — `/samples/codebase-narrator` (see full spec below)
+- [x] **Featured Sample Page** — `/samples/codebase-narrator` — static zero-cost demo, no auth required
 - [ ] CI/CD deployment
 - [ ] Mobile responsiveness audit
 - [ ] `ARCHITECT.md` for RAG engine design
+
+**Featured Sample Page (`app/samples/codebase-narrator/page.tsx`):** ✅ COMPLETE
+- Client component (`"use client"`), no auth, no API calls — statically imports from `data/sample-analysis.ts`
+- Two-tab layout: **Analysis** (📊) and **Chat Demo** (💬) with animated `layoutId` underline tab indicator
+- Analysis tab: amber "Sample Repository" banner + `<AnalysisResult result={SAMPLE_ANALYSIS} />` — full feature parity (Overview, Health Audit, PDF export) with zero component modifications
+- Chat Demo tab: blue "Sample Chat" banner + 4 question buttons from `SAMPLE_QA[n].question`; clicking `playAnswer(qa)` loads full answer into `bufferRef`, sets `streamDoneRef = true` immediately, starts `setInterval(16ms)` typewriter drain (1/3/6 chars dynamic)
+- On drain completion: renders `<MessageContent content={...} />` (markdown + Mermaid), source chips (deduplicated by `filePath`), inline `SourceViewerModal` (Framer Motion `AnimatePresence`, color-coded match badge)
+- `data/sample-analysis.ts` exports `SourceChunk` interface, `SampleQA` interface, `SAMPLE_ANALYSIS: AnalysisResult`, `SAMPLE_QA: SampleQA[]`
+- Admin guard UX in `app/analyze/page.tsx`: 403 + `{ adminOnly: true }` → amber card with "Explore Featured Sample →" CTA → `router.push("/samples/codebase-narrator")`
 
 **Profile Page (`app/profile/page.tsx`):**
 - Auth guard: redirects unauthenticated users to `/`
@@ -299,104 +313,48 @@ Run `npx prisma migrate dev` after schema changes.
 - Returns `{ error: "...", adminOnly: true }` with HTTP 403
 - Add `ADMIN_EMAIL=your-github-email` to both `.env.local` (dev) and production env
 
-## Featured Sample Page (Phase 6 — Static Demo Strategy)
+## Featured Sample Page — Implementation Notes (Phase 6 ✅ COMPLETE)
 
-**Purpose:** Provide a zero-cost, full-fidelity product demo for visitors who cannot trigger new analyses (admin guard active). The sample showcases this project itself (`Taehoonryu04/codebase-narrator`). No API calls, no DB queries at runtime — all content is statically imported from a committed data file.
+**Files:**
+- `app/samples/codebase-narrator/page.tsx` — the static demo page
+- `data/sample-analysis.ts` — static data file (committed, never fetched at runtime)
 
----
-
-### Core Design Principle
-
-All sample content is generated **once** by running a real analysis and a real chat session on this repository, then committed as a static TypeScript file. The sample page renders that static data through the exact same components used in the live product — no special-case rendering, no fake UI.
-
----
-
-### Data Source: `data/sample-analysis.ts`
-
-Single static file exporting two constants. Types come from `lib/types/index.ts` — no new types needed.
-
-```typescript
-import type { AnalysisResult } from "@/lib/types";
-import type { SourceChunk } from "@/lib/types";
-
-// Real AnalysisResult from an actual Gemini call on this repo
-export const SAMPLE_ANALYSIS: AnalysisResult = { ... };
-
-// 3–4 curated architect-level Q&A pairs from a real chat session
-export interface SampleQA {
-  id: string;
-  question: string;       // Text shown on the quick-select button
-  answer: string;         // Full markdown text (may include Mermaid code blocks)
-  sources: SourceChunk[]; // Hard-coded SourceChunk[] for source chips below the answer
-}
-export const SAMPLE_QA: SampleQA[] = [ ... ];
+**Project structure additions:**
+```
+app/samples/codebase-narrator/page.tsx   # Static demo page (no auth, no API)
+data/sample-analysis.ts                  # SAMPLE_ANALYSIS + SAMPLE_QA static exports
 ```
 
-`SourceChunk` fields needed per entry: `filePath`, `startLine`, `endLine`, `content` (actual code snippet), `matchedBy` (`"vector" | "keyword" | "both"`), `rrfScore`, `chunkIndex`.
-
-Questions should be architect-level (e.g., "How does the hybrid search pipeline work?", "Explain the atomic embedding swap strategy", "Walk me through the RAG chat data flow", "What are the top security findings in this codebase?"). Answers must include Mermaid diagrams where appropriate and cite real file paths (e.g., `lib/ai/rag.ts:storeEmbeddings`).
-
 ---
 
-### Page Route: `app/samples/codebase-narrator/page.tsx`
+### `data/sample-analysis.ts` — Data Management
 
-- Client component (`"use client"`), no auth required, no API calls.
-- Two-tab layout: **"Analysis"** and **"Chat Demo"** (tab switcher at top, similar to `AnalysisResult.tsx` tabs).
+`SAMPLE_ANALYSIS` must always be **one real, unmodified Gemini run** — not a hand-crafted composite. Honesty principle: the sample should show exactly what a visitor would get from a real analysis.
 
-**Analysis tab:**
-- Renders `<AnalysisResult result={SAMPLE_ANALYSIS} />` directly with static data.
-- Full feature parity: Overview tab, Health Audit tab (ScoreRings, FindingCards, SeverityBadges), PDF Export button — all work identically because the real component is reused with no modifications.
-- Add a visible "Sample Repository" banner at the top of the page (amber/yellow, non-intrusive) so users understand this is a pre-analyzed demo, not a live result.
+**Current state:** `SAMPLE_ANALYSIS` = Run 3 (timestamp `2026-02-18T15:43:43`), selected as the best single run from three real Gemini calls on `Taehoonryu04/Codebase-Narrator`. The three source runs are committed as `run1.md`, `run2.md`, `run3.md` in the project root for reference. Run 3 won on: highest outputTokens (3805), most insightful architecture finding ("Dual Authentication Management" — NextAuth.js vs Supabase `AuthContext` coexisting), unique security finding (`test-gemini.js` env var exposure), 4 `codeQuality.improvements` vs 3 in others, most complete `dataFlow` (covers typewriter effect, `embedText`, Mermaid).
 
-**Chat Demo tab:**
-- Shows 3–4 question buttons rendered from `SAMPLE_QA[n].question`.
-- Clicking a button typewriter-renders `SAMPLE_QA[n].answer` into a chat bubble using the same mechanism as `app/chat/page.tsx`: `bufferRef` accumulates the full answer string, `setInterval(16ms)` dequeues characters (1 normally, 3 at >80 buffered, 6 at >200 — identical catch-up logic).
-- Source chips render below the completed bubble from `SAMPLE_QA[n].sources`, using the same `<SourceViewerModal>` component as the live chat page.
-- No free-text input box — only the question buttons are interactive. Clicking a new question replaces (not appends) the current answer.
-- Show a "Sample Chat" banner explaining that this is a curated demo of real AI responses, not a live RAG query.
+**How to evaluate a new run (when the admin provides a new JSON file):**
 
----
+Read the new run alongside the current `SAMPLE_ANALYSIS` and compare on these criteria — **replace only if the new run is strictly better overall**:
 
-### Admin Guard UX: `app/analyze/page.tsx`
+| Signal | What to look for |
+|---|---|
+| `outputTokens` | Higher = more thorough Gemini response |
+| `healthAudit` findings | More distinct, specific, actionable findings win |
+| `keyFeatures` count | More features covered = better |
+| `dataFlow` | Should cover both analyze + chat pipelines with file references |
+| `architecture` description | Should identify `lib/` as service layer, mention Client/Server Components |
+| Unique insights | Findings not present in current version that are accurate and non-trivial |
 
-When `POST /api/analyze` returns HTTP 403 with `{ adminOnly: true }`:
-- Do NOT show a generic red error toast.
-- Render an inline card below the input form with:
-  - Heading: "Analysis is currently admin-only"
-  - Body copy: "To maintain free-tier infrastructure stability, new analyses are restricted to the administrator. Explore the featured sample to see the full product experience."
-  - Primary CTA button: **"Explore Featured Sample →"** → `router.push("/samples/codebase-narrator")`
-- Style: glassmorphism card consistent with the rest of the UI (dark bg, subtle border, rounded-xl). Use amber accent for the heading to distinguish from generic errors.
+If the new run wins: replace `SAMPLE_ANALYSIS` verbatim (no mixing). If current is better: keep current, inform the user.
 
----
+**`SAMPLE_QA` current state:** 4 hand-crafted architect-level Q&A entries (not from a real chat session — pending replacement). Questions:
+1. "How does the hybrid search pipeline work?"
+2. "Explain the atomic embedding swap strategy"
+3. "Walk me through the full RAG chat data flow"
+4. "How does the adaptive file scorer decide which files to send to Gemini?"
 
-### Files to Create / Edit
-
-| File | Action | Notes |
-|---|---|---|
-| `data/sample-analysis.ts` | **Create** | Populated once manually (see setup below) |
-| `app/samples/codebase-narrator/page.tsx` | **Create** | Client component, two-tab layout |
-| `app/analyze/page.tsx` | **Edit** | Handle `adminOnly: true` 403 with CTA card |
-
-**What NOT to build:**
-- No new API routes for the sample page.
-- No dynamic `/samples/[repo]` route — this is a single hardcoded page.
-- Do not modify `<AnalysisResult>`, `<SourceViewerModal>`, or any shared component — reuse as-is.
-- Do not create a backend endpoint to serve sample data — static import only.
-
----
-
-### One-Time Content Setup (Manual, Done by Admin)
-
-Run this once to populate `data/sample-analysis.ts` before deploying:
-
-1. Temporarily set `ADMIN_EMAIL` in `.env.local` to your account, or remove it entirely.
-2. Start `npm run dev`, sign in as admin, analyze `https://github.com/Taehoonryu04/codebase-narrator`.
-3. Open browser DevTools → Network → find the `/api/analyze` response → copy the full JSON body → paste as `SAMPLE_ANALYSIS` in `data/sample-analysis.ts`.
-4. Navigate to the Chat page for that repo. Ask 3–4 architect-level questions. For each answer:
-   - Copy the full answer text (markdown) as `answer`.
-   - Copy the source chips data (file path, line range, content, matchedBy, rrfScore) as `sources`.
-   - Record question + answer + sources as one `SampleQA` entry.
-5. Commit `data/sample-analysis.ts`. This file is static forever unless manually refreshed.
+To replace with real data: sign in as admin, navigate to `/chat?repo=Taehoonryu04/codebase-narrator`, ask each question above, copy the full markdown answer + source chip data (filePath, startLine, endLine, content, matchedBy, rrfScore) into the corresponding `SAMPLE_QA` entry in `data/sample-analysis.ts`.
 
 ---
 

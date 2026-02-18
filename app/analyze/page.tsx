@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { RepoInputForm } from "@/components/analyze/RepoInputForm";
 import { AnalysisResult } from "@/components/analyze/AnalysisResult";
@@ -21,9 +21,11 @@ const ANALYSIS_STEPS = [
  */
 function AnalyzeContent() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [result, setResult] = useState<AnalysisResultType | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [adminOnly, setAdminOnly] = useState(false);
     const [currentStep, setCurrentStep] = useState(0);
     const autoTriggered = useRef(false);
     const stepTimersRef = useRef<NodeJS.Timeout[]>([]);
@@ -44,6 +46,7 @@ function AnalyzeContent() {
         setIsAnalyzing(true);
         setError(null);
         setResult(null);
+        setAdminOnly(false);
         setCurrentStep(0);
 
         // Steps 0→1→2→3 advance quickly (~1.5s each) mirroring fast GitHub API calls.
@@ -65,6 +68,12 @@ function AnalyzeContent() {
             });
 
             const data = await response.json();
+
+            if (response.status === 403 && data.adminOnly) {
+                clearTimers();
+                setAdminOnly(true);
+                return;
+            }
 
             if (!response.ok) {
                 throw new Error(data.error || "Analysis failed");
@@ -222,6 +231,34 @@ function AnalyzeContent() {
                     </motion.div>
                 )}
                 </AnimatePresence>
+
+                {/* Admin-only card */}
+                {adminOnly && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="max-w-3xl mx-auto mt-12"
+                    >
+                        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-6">
+                            <h3 className="text-amber-800 dark:text-amber-300 font-semibold mb-2 text-lg">
+                                Analysis is currently admin-only
+                            </h3>
+                            <p className="text-amber-700 dark:text-amber-400 text-sm mb-5">
+                                To maintain free-tier infrastructure stability, new analyses are restricted to the
+                                administrator. Explore the featured sample to see the full product experience.
+                            </p>
+                            <button
+                                onClick={() => router.push("/samples/codebase-narrator")}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm
+                                    bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600
+                                    text-white transition-colors"
+                            >
+                                Explore Featured Sample
+                                <span>→</span>
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
 
                 {/* Error Message */}
                 {error && (
