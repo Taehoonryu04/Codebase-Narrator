@@ -316,24 +316,6 @@ npm start      # Production server
 
 ---
 
-## Database Schema
-
-```
-Prisma (PostgreSQL):
-  User         — NextAuth users (GitHub OAuth)
-  Account      — OAuth provider accounts
-  Session      — Active sessions
-  Analysis     — User's analysis history (unique: userId + repoFullName)
-  RateLimit    — Per-user counters: analysisCount, chatCount, windowStart (24h rolling)
-
-Supabase (direct SQL):
-  code_embeddings  — vector(768) HNSW index, filePath, content, startLine, endLine, batch_id, user_id
-  embedding_jobs   — status, total_chunks, embedded_chunks, batch_id, error_message, completed_at
-  usage_logs       — eventType, inputTokens, outputTokens, estimatedCostUsd, executionTimeMs, ipAddress, userId
-```
-
----
-
 ## License
 
 MIT
