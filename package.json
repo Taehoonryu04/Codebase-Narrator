@@ -13,6 +13,7 @@
     "@google/generative-ai": "^0.24.1",
     "@octokit/rest": "^22.0.1",
     "@prisma/client": "^5.22.0",
+    "@react-pdf/renderer": "^4.3.2",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "framer-motion": "^12.33.0",

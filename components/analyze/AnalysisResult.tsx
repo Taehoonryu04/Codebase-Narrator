@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import type {
     AnalysisResult as AnalysisResultType,
@@ -8,6 +9,11 @@ import type {
     AuditSeverity,
     HealthAudit,
 } from "@/lib/types";
+
+const ExportPdfButton = dynamic(
+    () => import("./ExportPdfButton").then((m) => m.ExportPdfButton),
+    { ssr: false, loading: () => null }
+);
 
 interface AnalysisResultProps {
     result: AnalysisResultType;
@@ -501,6 +507,7 @@ export function AnalysisResult({ result, stats }: AnalysisResultProps) {
                             {repoInfo.language && <span>📝 {repoInfo.language}</span>}
                         </div>
                     </div>
+                    <ExportPdfButton result={result} stats={effectiveStats ?? undefined} />
                 </div>
 
                 {/* Performance Stats Bar */}

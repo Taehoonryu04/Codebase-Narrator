@@ -2,7 +2,7 @@
 
 AI-powered GitHub repository analyzer generating comprehensive codebase insights. Portfolio project targeting Big Tech internships (2027).
 
-**Current Phase:** Phase 5 🚧 IN PROGRESS — Phase 5-1 (Source Traceability) ✅ DONE, Phase 5-2 (Architectural Visualizer) ✅ DONE, Phase 5-3 (Performance & Cost Monitoring) ✅ DONE, Phase 5-4 (Embedding Reliability) ✅ DONE, Phase 5-5 (AI Code Health Audit) ✅ DONE.
+**Current Phase:** Phase 5 ✅ COMPLETE (5-1 Source Traceability, 5-2 Architectural Visualizer, 5-3 Performance & Cost Monitoring, 5-4 Embedding Reliability, 5-5 AI Code Health Audit, 5-6 Professional PDF Export). Next: Phase 6 (Production Readiness).
 
 **🔒 Claude Code Usage Rules** (Efficiency & Control)
 
@@ -261,47 +261,15 @@ Run `npx prisma migrate dev` after schema changes.
   - Migration: `supabase/migrations/001_hybrid_search.sql` (run once in Supabase SQL Editor)
 - [x] **Chat Streaming** — `app/api/chat/route.ts` + `app/chat/page.tsx`
 
-### Phase 5: Reliability & Architectural Insights 🚧 IN PROGRESS
+### Phase 5: Reliability & Architectural Insights ✅ COMPLETE
 
-- [x] **Source Traceability (Citations)** ✅ DONE
-  - `SourceChunk` interface (`lib/ai/rag.ts`): extends `CodeChunk` with `startLine`, `endLine`, `rrfScore`, `matchedBy`
-  - `CodeChunk` now stores `startLine`/`endLine` computed in `chunkFile()` via `content.slice(0, offset).split("\n").length`
-  - `storeEmbeddings()` writes `start_line`/`end_line` to DB; `reciprocalRankFusion()` returns `SourceChunk[]` with scores + provenance
-  - `buildRagContext()` includes `[File: path, Lines: N-M]` headers in Gemini prompt
-  - `done` SSE event emits `sources: SourceChunk[]` (was `string[]`)
-  - Chat page: clickable chips per unique file (deduplicated by `filePath`, best RRF chunk), `SourceViewerModal` on click
-  - Migration: `supabase/migrations/002_add_line_numbers.sql` — adds `start_line`/`end_line` columns, drops + recreates both RPCs to return new columns
-
-- [x] **Architectural Visualizer** ✅ DONE
-  - `mermaid` v11 installed; rendered client-side only via `next/dynamic` (SSR-safe)
-  - `components/chat/MermaidDiagram.tsx`: renders SVG from mermaid code, toolbar with Download SVG + Expand buttons, fullscreen modal overlay, amber fallback on parse error (shows raw source)
-  - `components/chat/MessageContent.tsx`: `react-markdown` + `remark-gfm` renderer — detects ` ```mermaid ` blocks → `MermaidDiagram`; styled renderers for code blocks, lists, headings, blockquotes
-  - `app/chat/page.tsx`: completed model messages now render via `<MessageContent>` (markdown+mermaid); streaming bubble stays plain text (in-progress chars, not final)
-  - `sanitizeMermaid()` pre-processor in `MermaidDiagram.tsx` fixes common AI violations before rendering: strips `%%` comments, strips trailing `;`, cleans `[...]`/`{...}`/`(...)` labels (removes `()[]` backticks, converts `"` to `'`), wraps labels with `/` in `"..."` to prevent parallelogram parsing, wraps subgraph titles in `"..."` (handled first via early return), replaces dots in node IDs (`D6.1` → `D6_1`)
-  - System prompt in `app/api/chat/route.ts` updated: instructs AI to generate diagrams for flows/architecture, includes strict syntax rules (no parens, no dots in node IDs, no arrows in labels), and requires auth/error paths + complete response lifecycle in flow diagrams
-- [x] **Performance & Cost Monitoring** ✅ DONE
-  - `supabase/migrations/003_usage_logs.sql`: `usage_logs` table — tracks `user_id`, `ip_address`, `event_type` ('analyze'|'chat'), `execution_time_ms`, `rag_retrieval_ms`, `input_tokens`, `output_tokens`, `total_tokens`, `total_files`, `files_sent`, `estimated_cost_usd`; indexes on IP (anon) and user_id
-  - `lib/usage.ts`: `estimateCost()` (Gemini 2.5 Flash pricing: $0.075/1M input, $0.30/1M output), `logUsage()` (fire-and-forget INSERT), `checkAnonAnalysisLimit(ip)` (1 analysis/day for guests, fail-open on DB error)
-  - `lib/types/index.ts`: `AnalysisStats` + `ChatStats` interfaces; `stats?: AnalysisStats` added to `AnalysisResult`
-  - `lib/ai/gemini.ts`: `analyzeCodebase()` now returns `{ analysis, usageMetadata }` — exposes `promptTokenCount`, `candidatesTokenCount`, `totalTokenCount`
-  - `app/api/analyze/route.ts`: IP extraction, anon 1/day rate limit (429 + `upgradeRequired: true`), stats built from `usageMetadata` + timing, included in response JSON, fire-and-forget `logUsage()`
-  - `app/api/chat/route.ts`: `ragRetrievalMs` timer, token capture from `result.response` after stream, `stats: ChatStats` in `done` SSE event, fire-and-forget `logUsage()`
-  - `components/analyze/AnalysisResult.tsx`: stats bar in repo header card — ⏱ time · 🔢 tokens · 💰 cost · 🔍 files/total (% filtered); only shown if `stats` present
-  - `app/chat/page.tsx`: `statsRef` captures stats from `done` event; per-message inline stats rendered below source chips: `RAG Xs · N tokens · $X.XXXX`
-  - `components/main/landing-sections.tsx`: guest tier updated to "1 free analysis per day"
-  - **Required action**: Run `supabase/migrations/003_usage_logs.sql` in Supabase SQL Editor before deploying
-- [x] **Embedding Reliability** ✅ DONE
-  - Atomic swap: `storeEmbeddings()` inserts new batch with UUID `batch_id`, deletes old batch only after full commit — no downtime for existing chat users
-  - `embedding_jobs` table tracks `status`/`total_chunks`/`embedded_chunks` per batch; `batch_id` column added to `code_embeddings` with `DEFAULT gen_random_uuid()` (backfills existing rows)
-  - `GET /api/embeddings/status` polls latest job for a user+repo; chat page polls every 2s, shows animated progress banner + progress bar
-  - `BATCH_DELAY_MS` reduced 500 → 200ms (sequential, ~5 req/s, well within 1500 RPM free-tier limit)
-  - Migration: `supabase/migrations/004_embedding_jobs.sql` — **run in Supabase SQL Editor**
-- [x] **AI Code Health Audit** ✅ DONE
-  - Gemini prompt extended to return `healthAudit` JSON: `security` (score 0-100 + findings), `maintainability` (index + typed findings: `god_class|circular_dependency|complex_logic|other`), `architecture` (rating + pattern + findings)
-  - `lib/types/index.ts`: `AuditSeverity`, `MaintainabilityFindingType`, `SecurityFinding`, `MaintainabilityFinding`, `ArchitectureFinding`, `HealthAudit` interfaces; `healthAudit?: HealthAudit` added to `AnalysisResult.analysis`
-  - `lib/ai/gemini.ts`: `AnalysisOutput` updated; prompt includes severity rules (critical/high/medium/low), max 5 findings per category, must be grounded in actual code read
-  - `components/analyze/AnalysisResult.tsx`: two-tab layout — **Overview** (existing content extracted to `OverviewTab`) + **Health Audit** (new `HealthAuditTab`); `ScoreRing` (SVG circular progress), `FindingCard` (severity-bordered cards with title/description/file/recommendation), `SeverityBadge`; tab underline animated via `layoutId="tab-underline"` (Framer Motion); Health Audit tab shows "N/A" badge when no audit data
-- [ ] **Production Readiness**: CI/CD deployment, mobile responsiveness, and `ARCHITECT.md` documenting the RAG engine design.
+- [x] **Source Traceability** — `SourceChunk` type in `lib/ai/rag.ts` (extends `CodeChunk` with `startLine`, `endLine`, `rrfScore`, `matchedBy`); `done` SSE event emits `SourceChunk[]`; chat page shows clickable source chips + `SourceViewerModal`. Migration: `002_add_line_numbers.sql`.
+- [x] **Architectural Visualizer** — `components/chat/MermaidDiagram.tsx` + `MessageContent.tsx`; mermaid v11 via `next/dynamic`; `sanitizeMermaid()` pre-processor fixes common AI syntax violations; completed messages render markdown+diagrams, streaming stays plain text.
+- [x] **Performance & Cost Monitoring** — `lib/usage.ts` (`estimateCost`, `logUsage`, `checkAnonAnalysisLimit`); `usage_logs` Supabase table (migration `003_usage_logs.sql`); stats returned in analyze response + chat `done` event; stats bar in `AnalysisResult.tsx` header; guest capped at 1 analysis/day by IP.
+- [x] **Embedding Reliability** — Atomic swap in `storeEmbeddings()` (UUID `batch_id`); `embedding_jobs` table tracks progress; `GET /api/embeddings/status` polled every 2s by chat UI; progress banner shown while indexing. Migration: `004_embedding_jobs.sql`.
+- [x] **AI Code Health Audit** — `healthAudit` field in Gemini response (`security`/`maintainability`/`architecture` with scores + findings); types in `lib/types/index.ts`; `AnalysisResult.tsx` has two-tab layout (Overview + Health Audit) with `ScoreRing`, `FindingCard`, `SeverityBadge`.
+- [x] **Professional PDF Export** — `@react-pdf/renderer` (client-side, vector PDF, SSR-safe via `next/dynamic`); `components/analyze/AnalysisPdfDocument.tsx` (cover block + all overview sections + health audit with severity colors); `components/analyze/ExportPdfButton.tsx` (blob → download); button in `AnalysisResult.tsx` header top-right.
+- [ ] **Production Readiness**: CI/CD deployment, mobile responsiveness, `ARCHITECT.md` for RAG engine design.
 
 ## Quality Bar
 

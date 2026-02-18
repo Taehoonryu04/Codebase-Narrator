@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,7 +40,7 @@ interface ChatMessage {
     stats?: ChatStats;
 }
 
-export default function ChatPage() {
+function ChatPageInner() {
     const { user, loading: authLoading, signInWithGitHub } = useAuth();
     const searchParams = useSearchParams();
     const repoParam = searchParams.get("repo");
@@ -726,3 +726,5 @@ export default function ChatPage() {
         </div>
     );
 }
+
+export default function ChatPage() { return <Suspense><ChatPageInner /></Suspense>; }
