@@ -124,7 +124,14 @@ app/api/
 ├── analyze/               # Main analysis endpoint (auth + rate limit + GitHub + Gemini)
 ├── chat/route.ts          # RAG chat, SSE streaming, conversation history
 ├── embeddings/status/     # Job progress polling (GET ?repo=owner/repo)
-└── rate-limit/            # Read-only limit status for frontend display
+├── rate-limit/            # Read-only limit status for frontend display
+└── user/route.ts          # DELETE /api/user — full account and data deletion
+
+app/
+├── analyze/page.tsx       # Repository analysis with multi-step loading UX
+├── chat/page.tsx          # RAG chat — fixed viewport, typewriter streaming, source chips
+├── history/page.tsx       # Analysis history with cascade-delete
+└── profile/page.tsx       # User info, usage dashboard, account deletion
 
 components/
 ├── analyze/
