@@ -1,65 +1,77 @@
-# CodebaseNarrator
+# Codebase Narrator
 
-> AI-powered GitHub repository analyzer that generates comprehensive codebase insights and enables natural language Q&A over any codebase.
+**An AI-powered GitHub repository analysis engine.** Paste a repo URL and receive a structured technical audit: architecture diagrams, a multi-dimensional code health report, and a persistent RAG-powered chat interface that answers questions about the codebase with pinpoint source citations.
 
-Built with Next.js 16, Google Gemini 2.5 Flash, and a full RAG (Retrieval-Augmented Generation) pipeline backed by pgvector on Supabase.
+Built to demonstrate production-grade system design — not just "call an LLM and display the output."
 
 ---
 
-## Features
+## Key Features
 
-- **Instant Codebase Analysis** — Paste any public GitHub URL and get a structured breakdown: architecture overview, tech stack, design patterns, and key insights — powered by Gemini 2.5 Flash.
-- **Chat with Your Codebase** — Ask questions about any analyzed repo in natural language. A full RAG pipeline embeds code chunks, retrieves semantically relevant context, and generates grounded answers.
-- **Analysis History** — Authenticated users can revisit past analyses and launch chat sessions from any previously analyzed repository.
-- **Rate Limiting** — Per-user daily limits (5 analyses / 50 chats) enforced server-side with a 24-hour rolling window.
-- **Real-time Streaming Chat** — AI responses stream token-by-token via SSE. A client-side typewriter buffer renders text at ~60fps with dynamic catch-up, eliminating perceived latency.
-- **Professional PDF Export** — Download the full analysis as a professional PDF report. Includes all overview sections and the AI Code Health Audit (scores, severity-coded findings, recommendations). Generated client-side via `@react-pdf/renderer` — no server roundtrip, searchable vector text.
+| Feature | Description |
+|---|---|
+| **Hybrid Search (Vector + FTS)** | Semantic `pgvector` search fused with PostgreSQL Full-Text Search via Reciprocal Rank Fusion |
+| **Atomic Embedding Swap** | Zero-downtime re-indexing via UUID batch IDs — old embeddings serve queries until the new batch is 100% committed |
+| **Async Job Tracking** | `embedding_jobs` table + polling API exposes live indexing progress to the frontend |
+| **Adaptive File Scanner** | Tiered priority scoring selects the highest-signal files within a token budget before fetching |
+| **AI Code Health Audit** | Structured Gemini prompt extracts security findings, maintainability index, and architecture rating |
+| **Source Traceability** | Every chat response cites exact file paths and line ranges; clicking a chip opens the raw code snippet |
+| **Professional PDF Export** | Client-side vector PDF via `@react-pdf/renderer`, SSR-safe via `next/dynamic` |
+| **Real-time Cost Telemetry** | Per-request token counts and USD estimates logged to Supabase; displayed inline in the UI |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 16 (App Router), React 19, TypeScript |
-| AI | Google Gemini 2.5 Flash (`gemini-2.5-flash`) |
-| Embeddings | `gemini-embedding-001` (768-dim, MRL truncation) |
-| Database | PostgreSQL via Prisma ORM |
-| Vector Store | Supabase `pgvector` (HNSW index, 768 dims) |
-| Auth | NextAuth.js v5, GitHub OAuth |
-| Styling | Tailwind CSS v4, Framer Motion |
-| Validation | Zod |
+**Frontend**
+- Next.js 16.1.6 (App Router), React 19, TypeScript
+- Tailwind CSS v4, Framer Motion
+- `react-markdown` + `remark-gfm` + Mermaid v11 (dynamic import)
+- `@react-pdf/renderer` for client-side PDF generation
+
+**AI**
+- Google Gemini 2.5 Flash — analysis & chat (`gemini-2.5-flash`)
+- Google Gemini Embedding 001 — vector embeddings (`gemini-embedding-001`, 768-dim MRL truncation)
+
+**Backend & Infrastructure**
+- Supabase (PostgreSQL + `pgvector` extension)
+- Prisma ORM (User, Session, RateLimit, Analysis tables)
+- NextAuth.js v5 with GitHub OAuth
+- GitHub REST API via `@octokit/rest` (Git Tree API, recursive)
+- Zod for runtime schema validation
 
 ---
 
 ## Architecture
 
-```
-User Input (GitHub URL)
-  → Zod Validation
-  → POST /api/analyze
-      1. Parse owner/repo from URL
-      2. Fetch repo metadata + full file tree (Git Tree API, recursive, max depth 10)
-      3. Filter files (exclude node_modules/dist/.next/binary/lock files)
-      4. Adaptive score + sort all files before slicing to maxFiles budget
-         (manifests → entry points → src dirs → UI resources → config → docs → tests → generated)
-      5. Fetch file contents (batched, priority-sorted)
-      6. Truncate to 600 lines/file → send to Gemini with structured prompt
-      7. Parse JSON response → return AnalysisResult
-      8. Store embeddings fire-and-forget (authenticated users)
-          → chunk files (~2000 chars, 200-char overlap)
-          → embed with gemini-embedding-001 (sequential, 200ms delay)
-          → atomic swap: insert new batch → delete old (UUID batch_id)
-          → progress tracked in embedding_jobs table (polled by chat UI)
+### RAG & Embedding Pipeline
 
-Chat (POST /api/chat)
-  → Auth check + rate limit
-  → Embed user query (parallel with keyword search)
-  → Hybrid search: vector similarity + FTS keyword search (top-16 each)
-  → Reciprocal Rank Fusion → top-8 chunks
-  → Inject context into Gemini prompt
-  → generateContentStream → SSE stream (text/event-stream)
-  → Client typewriter buffer renders at ~60fps with dynamic catch-up
+```mermaid
+flowchart TD
+    A[User: GitHub URL] --> B[POST /api/analyze]
+    B --> C[Git Tree API: single recursive fetch]
+    C --> D[scoreFile: tiered priority sort]
+    D --> E[Fetch top-N files, truncate to 600 lines each]
+    E --> F[Gemini 2.5 Flash: structured JSON analysis]
+    F --> G[Return AnalysisResult to UI]
+
+    G --> H{Authenticated?}
+    H -- Yes --> I[storeEmbeddings: fire-and-forget]
+    I --> J[chunkFile: 2000-char chunks, 200-char overlap]
+    J --> K[gemini-embedding-001: 768-dim vectors, 500ms delay]
+    K --> L[Supabase INSERT code_embeddings with batch_id_new]
+    L --> M[DELETE WHERE batch_id != batch_id_new]
+    M --> N[embedding_jobs: status = completed]
+
+    O[User: Chat message] --> P[POST /api/chat]
+    P --> Q[embedText: query vector]
+    Q --> R1[match_code_chunks RPC: HNSW vector search]
+    Q --> R2[keyword_search_code_chunks RPC: FTS tsquery]
+    R1 & R2 --> S[reciprocalRankFusion k=60: deduplicate + score]
+    S --> T[buildRagContext: top-8 SourceChunks]
+    T --> U[Gemini 2.5 Flash: generateContentStream]
+    U --> V[SSE: chunk / done+sources / error events]
+    V --> W[Chat UI: typewriter render + clickable source chips]
 ```
 
 ### Project Structure
@@ -67,47 +79,184 @@ Chat (POST /api/chat)
 ```
 lib/
 ├── ai/
-│   ├── gemini.ts         # Gemini AI integration
-│   ├── embeddings.ts     # Embedding generation
-│   └── rag.ts            # Chunk → embed → retrieve pipeline
-├── github.ts             # GitHub API wrapper (octokit)
-├── rate-limit.ts         # Per-user rate limiting (Prisma)
-├── validation.ts         # Zod schemas
-└── types/                # Shared TypeScript types
+│   ├── gemini.ts          # Gemini client, analysis prompt, Health Audit schema
+│   ├── embeddings.ts      # gemini-embedding-001, BATCH_SIZE=1, 500ms delay
+│   └── rag.ts             # Chunking, RRF fusion, atomic swap, job tracking
+├── github.ts              # Git Tree API, adaptive file scoring tiers
+├── rate-limit.ts          # 24-hour rolling window per user (Prisma)
+├── usage.ts               # Token cost estimation, anonymous IP guard
+└── types/index.ts         # AnalysisResult, SourceChunk, HealthAudit, ChatStats
 
-app/
-├── page.tsx              # Landing page (Hero + scroll sections)
-├── analyze/page.tsx      # Analysis UI
-├── chat/page.tsx         # Fixed-viewport chat interface
-├── history/page.tsx      # User analysis history
-└── api/
-    ├── analyze/          # Repository analysis endpoint
-    ├── chat/route.ts     # RAG-powered chat endpoint
-    ├── embeddings/       # Embedding status polling endpoint
-    ├── history/          # History CRUD
-    └── rate-limit/       # Rate limit status
+app/api/
+├── analyze/               # Main analysis endpoint (auth + rate limit + GitHub + Gemini)
+├── chat/route.ts          # RAG chat, SSE streaming, conversation history
+├── embeddings/status/     # Job progress polling (GET ?repo=owner/repo)
+└── rate-limit/            # Read-only limit status for frontend display
 
 components/
-├── main/                 # Hero, LandingSections
-├── analyze/              # Analysis feature components
-├── chat/                 # Chat UI components
-├── history/              # History UI components
-├── auth/                 # Auth UI
-└── navigation/           # Nav with auth-gated links
+├── analyze/
+│   ├── AnalysisResult.tsx        # Overview + Health Audit two-tab layout
+│   ├── AnalysisPdfDocument.tsx   # react-pdf document tree (cover + body + audit)
+│   └── ExportPdfButton.tsx       # Blob download handler with spinner
+└── chat/
+    ├── MessageContent.tsx        # react-markdown + Mermaid renderer
+    ├── MermaidDiagram.tsx        # SVG render, fullscreen, SVG download
+    └── SourceViewerModal.tsx     # Code snippet viewer with line range + RRF score
 ```
 
 ---
 
-## Getting Started
+## Engineering Deep Dive
+
+Seven non-trivial system design problems encountered and solved during development.
+
+---
+
+### Challenge 1: Hybrid Search with Reciprocal Rank Fusion
+
+**Problem.** Pure semantic vector search (`pgvector` cosine similarity) retrieves conceptually related code but fails on exact identifier lookups — searching for `storeEmbeddings` may surface files about "storage" rather than the function itself. Keyword search alone misses semantic relationships across renamed or abstracted concepts.
+
+**Solution.** `lib/ai/rag.ts:searchSimilarChunks()` runs both search paths in parallel:
+
+1. **Vector search** via `match_code_chunks` Supabase RPC — HNSW index on `vector(768)`, cosine distance
+2. **Keyword search** via `keyword_search_code_chunks` RPC — `content_tsv tsvector` generated column + GIN index + `websearch_to_tsquery` + `ts_rank`
+
+Results are merged with **Reciprocal Rank Fusion**:
+
+```
+score(d) = Σ  1 / (k + rank(d) + 1)     k = 60
+           methods
+```
+
+Documents appearing in both result sets accumulate scores from each ranking independently. The `k=60` constant smooths rank sensitivity. Deduplication is keyed on `filePath::chunkIndex`. Each method fetches `topK × 2` candidates before fusion to ensure the final top-K survivors are high-quality. A keyword search failure degrades gracefully to vector-only — logs a warning and continues rather than surfacing an error.
+
+Each returned `SourceChunk` carries a `matchedBy` field (`"vector"` | `"keyword"` | `"both"`) rendered as a color-coded badge in the source viewer.
+
+---
+
+### Challenge 2: Zero-Downtime Atomic Embedding Swap
+
+**Problem.** When a user re-analyzes a repo, the naive sequence is: delete old embeddings → insert new ones. During that window — which can span several minutes for large repositories — the chat returns empty results. Users navigating to chat mid-indexing see a broken experience.
+
+**Solution.** `lib/ai/rag.ts:storeEmbeddings()` implements an **atomic swap via UUID batch IDs**:
+
+```
+1. Generate  batch_id_new  (UUID v4)
+2. INSERT all new chunks with  embedding.batch_id = batch_id_new
+   (old chunks with batch_id_old are still live — queries hit them normally)
+3. Only after the full insert commits:
+   DELETE FROM code_embeddings WHERE user_id = ? AND repo = ? AND batch_id != batch_id_new
+```
+
+The `match_code_chunks` RPC queries by `(user_id, repo_full_name)` without a batch_id filter, so old chunks remain visible to every concurrent chat query throughout the entire insert phase. The delete is the only "hot" step, and it is a single atomic SQL operation. There is no lock, no downtime, and no race condition — even if a user opens the chat tab the moment analysis completes.
+
+---
+
+### Challenge 3: Asynchronous Job Tracking with Live Progress UI
+
+**Problem.** Embedding a large repository (hundreds of chunks, sequential 500ms-delayed API calls) runs for several minutes in a background task. Without status feedback, users navigate to chat, see "no embeddings found," and assume the system is broken or re-trigger analysis unnecessarily.
+
+**Solution.** A dedicated `embedding_jobs` Supabase table tracks every indexing job:
+
+```sql
+embedding_jobs (
+  user_id        TEXT,
+  repo_full_name TEXT,
+  status         TEXT,     -- in_progress | completed | failed
+  total_chunks   INT,
+  embedded_chunks INT,     -- updated every 10 chunks
+  batch_id       UUID,
+  created_at     TIMESTAMPTZ,
+  completed_at   TIMESTAMPTZ,
+  error_message  TEXT
+)
+```
+
+`storeEmbeddings()` increments `embedded_chunks` after every 10 embeddings. `GET /api/embeddings/status?repo=owner/repo` reads the latest job row and returns `{ status, progressPct, totalChunks, embeddedChunks }`. The chat page polls this endpoint every 2 seconds and renders an animated blue progress banner (`Indexing… 47%`) while `status === "in_progress"`. The empty-state message also updates to "Your codebase is being indexed" so users know to wait rather than re-trigger.
+
+---
+
+### Challenge 4: Structural Code Chunking with Exact Line Number Preservation
+
+**Problem.** Naive fixed-size text splitting loses file context and makes source attribution impossible. Standard document chunking cuts through function bodies and discards the metadata needed to say "the relevant code is on line 84 of `auth/route.ts`."
+
+**Solution.** `lib/ai/rag.ts:chunkFile()` implements **overlap-aware chunking with exact line tracking**:
+
+- Each chunk is ≤ 2000 characters with a 200-character trailing overlap (the last 200 chars of chunk N prefix chunk N+1, preserving cross-boundary context)
+- `startLine` and `endLine` are computed by counting `\n` characters in the text before and within each chunk — 1-indexed to match editor line numbers
+- The chunk stores `filePath`, `chunkIndex`, `content`, `startLine`, `endLine` — all persisted to `code_embeddings` and surfaced as `SourceChunk` to the frontend
+
+At query time, source chips render as `path/file.ts:42`. Clicking opens `SourceViewerModal` with the exact raw code snippet, line range, `matchedBy` badge (violet = both, blue = vector, amber = keyword), and the numerical `rrfScore` — giving users full transparency into retrieval decisions.
+
+---
+
+### Challenge 5: Structured Multi-Dimensional Code Health Audit
+
+**Problem.** Generic AI summaries ("this code is well-structured") provide no actionable signal. They cannot be cited in a code review, used to prioritize technical debt, or compared across repositories.
+
+**Solution.** The Gemini analysis prompt enforces a **typed JSON schema** for the `healthAudit` response field, instructing the model to reason from three distinct auditor perspectives:
+
+- **Security reviewer** — look for fail-open policies, exposed secrets, missing input validation, injection vectors
+- **Maintainability reviewer** — look for god classes, circular dependencies, deeply nested logic, missing abstractions
+- **Architect** — look for tight coupling, separation-of-concerns violations, missing layering, undocumented patterns
+
+The extracted schema:
+
+```typescript
+healthAudit: {
+  security:        { score: number,  findings: SecurityFinding[] }
+  maintainability: { index: number,  findings: MaintainabilityFinding[] }  // typed: god_class | circular_dependency | complex_logic | other
+  architecture:    { rating: number, pattern: string, findings: ArchitectureFinding[] }
+}
+
+// Each finding: { severity: "critical"|"high"|"medium"|"low", title, description, file?, recommendation }
+```
+
+The UI renders a two-tab layout: **Overview** (summary, tech stack, data flow) and **Health Audit** (three `ScoreRing` SVG components + `FindingCard` list with `SeverityBadge` color-coding). All findings are reproduced in the PDF export with severity-colored borders.
+
+---
+
+### Challenge 6: SSR-Safe Client-Side Vector PDF Export
+
+**Problem.** `@react-pdf/renderer` operates on browser-only canvas APIs and crashes Next.js SSR with `ReferenceError: window is not defined`. Rendering HTML-to-PDF (puppeteer, html2canvas) produces raster output, requires a server process, and cannot produce selectable vector text.
+
+**Solution.** A pure client-side vector PDF pipeline:
+
+1. `ExportPdfButton` is imported via `next/dynamic({ ssr: false })` — the component is never evaluated on the server, eliminating the SSR crash entirely
+2. On click: `pdf(<AnalysisPdfDocument {...props} />).toBlob()` runs entirely in the browser using `@react-pdf/renderer`'s internal PDF serializer
+3. `URL.createObjectURL(blob)` → programmatic `<a>` click with `download="reponame-analysis.pdf"` → `URL.revokeObjectURL()` cleanup
+4. Button disables and shows a spinner during blob generation to prevent double-click re-generation
+
+The document is a structured technical report: cover block (repo metadata, star count, language, analysis stats pills), body sections (summary, tech stack tags, architecture, code quality score bars), and a Health Audit section with severity-colored finding cards (critical = `#ef4444`, high = `#f97316`, medium = `#3b82f6`, low = `#a3a3a3`). Page numbers appear in a fixed footer. Output is a true vector PDF — text is fully selectable and renders crisply at any zoom level.
+
+---
+
+### Challenge 7: Multi-Tier Usage Guard and Cost Shield
+
+**Problem.** Unrestricted API access exposes two attack surfaces: (a) authenticated users could exhaust Gemini quotas by running unlimited analyses, and (b) anonymous visitors could trigger unbounded server-side processing with no accountability.
+
+**Solution.** Two independent enforcement layers with different storage backends:
+
+**Layer 1 — Per-user rolling window (authenticated, Prisma).**
+`lib/rate-limit.ts` maintains a `RateLimit` row per user with `analysisCount`, `chatCount`, and `windowStart`. `checkAndIncrementAnalysis()` / `checkAndIncrementChat()` check whether `Date.now() - windowStart > 86_400_000ms`; if true, the counter resets to 1; otherwise it increments and checks against the limit. Requests over the limit return HTTP 429 with a `Retry-After` header. Limits: 5 analyses/day, 50 chat messages/day.
+
+**Layer 2 — Anonymous IP cap (unauthenticated, Supabase).**
+`lib/usage.ts:checkAnonAnalysisLimit()` queries `usage_logs` for `analyze` events from the same IP in the last 24 hours. If count ≥ 1, the request is rejected before any GitHub or Gemini API call is made. On Supabase query failure, the function **fails open** (returns `true`) — a deliberate trade-off: transient DB errors should not lock out legitimate users, and the cost of an occasional missed enforcement is lower than degraded availability.
+
+`logUsage()` records every request (authenticated or anonymous) with `inputTokens`, `outputTokens`, `estimatedCostUsd`, `executionTimeMs`, and `ragRetrievalMs` — providing a full audit trail and per-event cost attribution across the `usage_logs` table.
+
+---
+
+## Installation & Setup
 
 ### Prerequisites
 
-- Node.js 18+
-- PostgreSQL database (or Supabase project)
-- Google Gemini API key — [get one here](https://aistudio.google.com/app/apikey)
-- GitHub OAuth app — create at [github.com/settings/developers](https://github.com/settings/developers)
+- Node.js 20+
+- Supabase project (PostgreSQL + pgvector)
+- Google AI Studio account — [get a Gemini API key](https://aistudio.google.com/app/apikey)
+- GitHub OAuth App — create at [github.com/settings/developers](https://github.com/settings/developers)
 
-### Setup
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/your-username/codebasenarrator.git
@@ -115,66 +264,73 @@ cd codebasenarrator
 npm install
 ```
 
-Create `.env.local`:
+### 2. Configure environment variables
+
+Create `.env.local` at the project root:
 
 ```bash
 # AI
 GEMINI_API_KEY=your_gemini_api_key
 
-# GitHub
-GITHUB_TOKEN=your_github_token         # Optional but recommended (5000 req/hr vs 60)
-GITHUB_CLIENT_ID=your_oauth_client_id
-GITHUB_CLIENT_SECRET=your_oauth_client_secret
+# GitHub (optional — raises rate limit from 60/hr to 5000/hr)
+GITHUB_TOKEN=your_github_pat
+GITHUB_CLIENT_ID=your_oauth_app_client_id
+GITHUB_CLIENT_SECRET=your_oauth_app_client_secret
 
 # Auth
-NEXTAUTH_SECRET=your_nextauth_secret   # openssl rand -base64 32
+NEXTAUTH_SECRET=         # openssl rand -base64 32
 NEXTAUTH_URL=http://localhost:3000
 
-# Database
-DATABASE_URL=postgresql://...
+# Database (Prisma)
+DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
 
-# Supabase (for RAG / vector search)
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
-SUPABASE_SERVICE_ROLE_KEY=xxx
+# Supabase (vector search + job tracking)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
+
+### 3. Initialize the database
 
 ```bash
-npx prisma migrate dev   # Run database migrations
-npm run dev              # http://localhost:3000
+# Prisma: User, Account, Session, Analysis, RateLimit tables
+npx prisma migrate dev
+```
+
+Run the following SQL migrations in the Supabase SQL Editor in order:
+
+```
+supabase/migrations/001_hybrid_search.sql    — code_embeddings table, FTS generated column, RPCs
+supabase/migrations/002_add_line_numbers.sql — startLine, endLine columns on code_embeddings
+supabase/migrations/003_usage_logs.sql       — usage_logs table
+supabase/migrations/004_embedding_jobs.sql   — embedding_jobs table
+```
+
+### 4. Run
+
+```bash
+npm run dev    # http://localhost:3000
+npm run build  # Production build
+npm start      # Production server
 ```
 
 ---
 
-## Roadmap
+## Database Schema
 
-**Completed**
-- Phase 1: MVP analysis (GitHub URL → Gemini → structured output)
-- Phase 2: Auth + Analysis History (GitHub OAuth, NextAuth, Prisma)
-- Phase 3: RAG + Chat + Rate Limiting (pgvector, embeddings, chat API)
-- Phase 4: Engine Refinement
-  - Adaptive Scanner — tiered file scoring with language-aware prioritization, deep-path support (depth 10), and XML/resource file handling
-  - Hybrid Search — Reciprocal Rank Fusion over vector + FTS keyword search; `content_tsv` generated column + GIN index + `keyword_search_code_chunks` RPC
-  - Chat Streaming — SSE + client-side typewriter buffer for fluid, ChatGPT-like real-time UX
+```
+Prisma (PostgreSQL):
+  User         — NextAuth users (GitHub OAuth)
+  Account      — OAuth provider accounts
+  Session      — Active sessions
+  Analysis     — User's analysis history (unique: userId + repoFullName)
+  RateLimit    — Per-user counters: analysisCount, chatCount, windowStart (24h rolling)
 
-**Phase 5: Reliability & Architectural Insights** (✅ Complete)
-- [x] Source Traceability — clickable source chips with code snippets cited in every AI response; `SourceViewerModal` with line ranges and RRF scores
-- [x] Architectural Visualizer — auto-generated Mermaid diagrams rendered as interactive SVGs (flowcharts, class diagrams, sequence diagrams) with download + fullscreen; robust sanitizer handles common AI syntax violations
-- [x] Performance & Cost Monitoring — per-analysis and per-chat stats (execution time, tokens, cost, context efficiency); `usage_logs` table; guest rate limit (1/day by IP)
-- [x] Embedding Progress Tracking — atomic swap re-embedding with `embedding_jobs` table; live progress banner in chat UI (polls every 2s while indexing)
-- [x] AI Code Health Audit — Health Audit tab with SVG score rings (Security / Maintainability / Architecture, 0–100) and severity-coded `FindingCard` list; grounded in actual code Gemini read during analysis
-- [x] Professional PDF Export — client-side vector PDF via `@react-pdf/renderer`; cover block + all overview sections + health audit with severity colors; "Export PDF" button in analysis header
-- [ ] Production Readiness — CI/CD, mobile optimization, `ARCHITECT.md` for RAG engine design
-
----
-
-## Design Decisions
-
-- **RAG over full-context:** Code files are chunked and embedded rather than dumped wholesale into the LLM context, keeping costs low and retrieval precise.
-- **Fire-and-forget embedding:** Embeddings are generated asynchronously after analysis so the user gets their result immediately without waiting for vector ingestion. Progress is tracked in an `embedding_jobs` table and polled by the chat UI.
-- **Atomic swap re-embedding:** On re-analysis, old embeddings stay live and searchable until the full new batch is committed, then deleted in one operation (UUID `batch_id` per batch). No downtime or empty-state race condition.
-- **User-scoped embeddings:** Each user's code chunks are stored with their `user_id`, so search is always scoped — no cross-user data leakage.
-- **Sequential embedding with backoff:** Free-tier Gemini rate limits are respected by processing one chunk at a time with a 200ms delay between calls (~5 req/s, well within the 1500 RPM free-tier limit).
+Supabase (direct SQL):
+  code_embeddings  — vector(768) HNSW index, filePath, content, startLine, endLine, batch_id, user_id
+  embedding_jobs   — status, total_chunks, embedded_chunks, batch_id, error_message, completed_at
+  usage_logs       — eventType, inputTokens, outputTokens, estimatedCostUsd, executionTimeMs, ipAddress, userId
+```
 
 ---
 
