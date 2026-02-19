@@ -167,11 +167,13 @@ Run `npx prisma migrate dev` after schema changes.
 
 **RAG & Vector Search (Phase 3):**
 - `pgvector` extension enabled in Supabase
-- Chunk file contents (~2000 chars with 200-char overlap) → `lib/ai/rag.ts:chunkFile()`
+- Chunk file contents (~3000 chars with 300-char overlap, step=2700) → `lib/ai/rag.ts:chunkFile()`
+  - Previously 2000/200 — raised to 3000/300 to reduce total chunk count ~33% and stay within free-tier daily quota (RPD). This repo produced ~197 chunks at 2000 chars, now ~148 at 3000 chars. Unique coverage is unchanged (step ratio maintained).
 - Embedding model: `gemini-embedding-001` with `outputDimensionality: 768` (MRL truncation) → `lib/ai/embeddings.ts`
   - NOTE: `text-embedding-004` is deprecated (404). Use `gemini-embedding-001` only.
   - NOTE: Do NOT use `apiVersion: "v1"` — default v1beta works for this model.
-  - Sequential embedding: BATCH_SIZE=1, BATCH_DELAY_MS=200 (~5 req/s, within 1500 RPM free-tier limit)
+  - Sequential embedding: BATCH_SIZE=1, BATCH_DELAY_MS=500 in `rag.ts` (~2 req/s, 120 RPM — 8× safety margin below 1500 RPM free-tier limit)
+  - **429 resilience**: `embedText` in `embeddings.ts` retries up to 4 times with exponential backoff (15s → 30s → 60s → 120s) before propagating the error. This handles burst quota hits without failing the entire job. If the daily RPD quota is exhausted, retries will eventually exhaust and the job is marked `failed` (non-blocking — analysis response still returns normally).
 - `code_embeddings` table in Supabase: `vector(768)`, `hnsw` index (ivfflat also works at 768 dims)
 - Also has `content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED` + GIN index for FTS (Phase 4.2)
 - Vector search RPC: `match_code_chunks(query_embedding, match_user_id, match_repo, match_count)`

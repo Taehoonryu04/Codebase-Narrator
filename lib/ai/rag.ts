@@ -10,11 +10,11 @@ function getSupabaseAdmin() {
     );
 }
 
-const BATCH_DELAY_MS = 200;
+const BATCH_DELAY_MS = 500; // 2 req/s = 120 RPM — safe margin on free tier
 
-// ~500 tokens ≈ ~2000 characters
-const CHUNK_SIZE = 2000;
-const CHUNK_OVERLAP = 200;
+// ~750 tokens ≈ ~3000 characters; larger chunks reduce total count ~33%
+const CHUNK_SIZE = 3000;
+const CHUNK_OVERLAP = 300;
 
 /** Minimal chunk shape used internally and stored in the DB. */
 export interface CodeChunk {

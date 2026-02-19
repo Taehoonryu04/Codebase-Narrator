@@ -90,8 +90,8 @@ flowchart TD
 
     G --> H{Authenticated?}
     H -- Yes --> I[storeEmbeddings: fire-and-forget]
-    I --> J[chunkFile: 2000-char chunks, 200-char overlap]
-    J --> K[gemini-embedding-001: 768-dim vectors, 500ms delay]
+    I --> J[chunkFile: 3000-char chunks, 300-char overlap]
+    J --> K[gemini-embedding-001: 768-dim vectors, 500ms delay, 4× retry backoff]
     K --> L[Supabase INSERT code_embeddings with batch_id_new]
     L --> M[DELETE WHERE batch_id != batch_id_new]
     M --> N[embedding_jobs: status = completed]
@@ -222,7 +222,7 @@ embedding_jobs (
 
 **Solution.** `lib/ai/rag.ts:chunkFile()` implements **overlap-aware chunking with exact line tracking**:
 
-- Each chunk is ≤ 2000 characters with a 200-character trailing overlap (the last 200 chars of chunk N prefix chunk N+1, preserving cross-boundary context)
+- Each chunk is ≤ 3000 characters with a 300-character trailing overlap (the last 300 chars of chunk N prefix chunk N+1, preserving cross-boundary context)
 - `startLine` and `endLine` are computed by counting `\n` characters in the text before and within each chunk — 1-indexed to match editor line numbers
 - The chunk stores `filePath`, `chunkIndex`, `content`, `startLine`, `endLine` — all persisted to `code_embeddings` and surfaced as `SourceChunk` to the frontend
 
