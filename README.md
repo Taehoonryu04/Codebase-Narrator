@@ -299,8 +299,8 @@ The document is a structured technical report: cover block (repo metadata, star 
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-username/codebasenarrator.git
-cd codebasenarrator
+git clone https://github.com/Taehoonryu04/Codebase-Narrator.git
+cd Codebase-Narrator
 npm install
 ```
 
@@ -320,6 +320,7 @@ GITHUB_CLIENT_SECRET=your_oauth_app_client_secret
 # Auth
 NEXTAUTH_SECRET=         # openssl rand -base64 32
 NEXTAUTH_URL=http://localhost:3000
+ADMIN_EMAIL=             # GitHub email of the account that can run analyses
 
 # Database (Prisma)
 DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
