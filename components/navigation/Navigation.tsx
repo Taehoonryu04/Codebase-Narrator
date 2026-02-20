@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { SignInButton } from "@/components/auth/SignInButton";
 import { UserMenu } from "@/components/auth/UserMenu";
+import { DonationModal } from "@/components/main/DonationModal";
 
 /**
  * Navigation Component
@@ -15,6 +17,7 @@ import { UserMenu } from "@/components/auth/UserMenu";
 
 export function Navigation() {
     const { user, loading } = useAuth();
+    const [showDonation, setShowDonation] = useState(false);
 
     return (
         <nav className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950">
@@ -48,6 +51,13 @@ export function Navigation() {
                                 </Link>
                             </>
                         )}
+                        <button
+                            onClick={() => setShowDonation(true)}
+                            className="text-sm font-medium px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700
+                                text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
+                        >
+                            ☕ Support
+                        </button>
                         {loading ? (
                             <div className="w-32 h-10 bg-neutral-100 dark:bg-neutral-800 rounded-lg animate-pulse" />
                         ) : user ? (
@@ -58,6 +68,7 @@ export function Navigation() {
                     </div>
                 </div>
             </div>
+            <DonationModal isOpen={showDonation} onClose={() => setShowDonation(false)} />
         </nav>
     );
 }

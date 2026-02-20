@@ -290,6 +290,7 @@ Run `npx prisma migrate dev` after schema changes.
   - Profile link added to `UserMenu` dropdown (`components/auth/UserMenu.tsx`)
 - [x] **Admin Guard** — `POST /api/analyze` returns `{ adminOnly: true }` (HTTP 403) for non-admin users; fail-closed: `!ADMIN_EMAIL || userEmail !== ADMIN_EMAIL`
 - [x] **Featured Sample Page** — `/samples/codebase-narrator` — static zero-cost demo, no auth required
+- [x] **Donation / Support Modal** — `components/main/DonationModal.tsx`; surfaced in nav (always visible) + admin-only card on `/analyze`
 - [ ] CI/CD deployment
 - [ ] Mobile responsiveness audit
 - [ ] `ARCHITECT.md` for RAG engine design
@@ -301,7 +302,7 @@ Run `npx prisma migrate dev` after schema changes.
 - Chat Demo tab: blue "Sample Chat" banner + 4 question buttons from `SAMPLE_QA[n].question`; clicking `playAnswer(qa)` loads full answer into `bufferRef`, sets `streamDoneRef = true` immediately, starts `setInterval(16ms)` typewriter drain (1/3/6 chars dynamic)
 - On drain completion: renders `<MessageContent content={...} />` (markdown + Mermaid), source chips (deduplicated by `filePath`), inline `SourceViewerModal` (Framer Motion `AnimatePresence`, color-coded match badge)
 - `data/sample-analysis.ts` exports `SourceChunk` interface, `SampleQA` interface, `SAMPLE_ANALYSIS: AnalysisResult`, `SAMPLE_QA: SampleQA[]`
-- Admin guard UX in `app/analyze/page.tsx`: 403 + `{ adminOnly: true }` → amber card with "Explore Featured Sample →" CTA → `router.push("/samples/codebase-narrator")`
+- Admin guard UX in `app/analyze/page.tsx`: 403 + `{ adminOnly: true }` → amber card with "☕ Support the Project" (opens `DonationModal`) + "Explore Featured Sample →" buttons
 
 **Profile Page (`app/profile/page.tsx`):**
 - Auth guard: redirects unauthenticated users to `/`
@@ -314,6 +315,12 @@ Run `npx prisma migrate dev` after schema changes.
 - Check fires after session extraction, before any GitHub or Gemini API call — zero cost on blocked requests
 - Returns `{ error: "...", adminOnly: true }` with HTTP 403
 - Add `ADMIN_EMAIL=your-github-email` to both `.env.local` (dev) and production env
+
+**Donation Modal (`components/main/DonationModal.tsx`):**
+- Props: `isOpen: boolean`, `onClose: () => void`
+- Framer Motion `AnimatePresence`; backdrop click closes modal
+- BMC link: `https://buymeacoffee.com/taehoonryu04`; secondary "Explore Sample →" → `/samples/codebase-narrator`
+- Mounted in `Navigation.tsx` (always visible "☕ Support" button) and `app/analyze/page.tsx` (admin-only card)
 
 ## Featured Sample Page — Implementation Notes (Phase 6 ✅ COMPLETE)
 

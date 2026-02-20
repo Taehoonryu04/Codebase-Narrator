@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { RepoInputForm } from "@/components/analyze/RepoInputForm";
 import { AnalysisResult } from "@/components/analyze/AnalysisResult";
 import { FloatingPaths } from "@/components/ui/floating-paths";
+import { DonationModal } from "@/components/main/DonationModal";
 import type { AnalysisResult as AnalysisResultType } from "@/lib/types";
 
 const ANALYSIS_STEPS = [
@@ -26,6 +27,7 @@ function AnalyzeContent() {
     const [result, setResult] = useState<AnalysisResultType | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [adminOnly, setAdminOnly] = useState(false);
+    const [showDonation, setShowDonation] = useState(false);
     const [currentStep, setCurrentStep] = useState(0);
     const autoTriggered = useRef(false);
     const stepTimersRef = useRef<NodeJS.Timeout[]>([]);
@@ -243,20 +245,34 @@ function AnalyzeContent() {
                             <h3 className="text-amber-800 dark:text-amber-300 font-semibold mb-2 text-lg">
                                 Analysis is currently admin-only
                             </h3>
-                            <p className="text-amber-700 dark:text-amber-400 text-sm mb-5">
-                                To maintain free-tier infrastructure stability, new analyses are restricted to the
-                                administrator. Explore the featured sample to see the full product experience.
+                            <p className="text-amber-700 dark:text-amber-400 text-sm mb-2">
+                                Live analysis requires Gemini API calls, which run on a free-tier quota. To keep the
+                                project stable, new analyses are restricted to the administrator.
                             </p>
-                            <button
-                                onClick={() => router.push("/samples/codebase-narrator")}
-                                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm
-                                    bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600
-                                    text-white transition-colors"
-                            >
-                                Explore Featured Sample
-                                <span>→</span>
-                            </button>
+                            <p className="text-amber-600 dark:text-amber-500 text-xs mb-5">
+                                Support the project to help fund API upgrades and open full access to everyone —
+                                donors receive full analysis access.
+                            </p>
+                            <div className="flex gap-3 flex-wrap">
+                                <button
+                                    onClick={() => setShowDonation(true)}
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm
+                                        bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600
+                                        text-white transition-colors"
+                                >
+                                    ☕ Support the Project
+                                </button>
+                                <button
+                                    onClick={() => router.push("/samples/codebase-narrator")}
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm
+                                        border border-amber-400 dark:border-amber-600 text-amber-700 dark:text-amber-400
+                                        hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                                >
+                                    Explore Featured Sample →
+                                </button>
+                            </div>
                         </div>
+                        <DonationModal isOpen={showDonation} onClose={() => setShowDonation(false)} />
                     </motion.div>
                 )}
 
