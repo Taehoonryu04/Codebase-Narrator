@@ -251,7 +251,7 @@ Run `npx prisma migrate dev` after schema changes.
 ## Phase Roadmap
 
 **Completed:** Phase 1 (MVP), Phase 2 (Auth + History), Phase 3 (RAG + Chat + Rate limiting), Phase 4 (Engine Refinement)
-- TODO: set RATE_LIMITS to `analysis: 5, chat: 50` in `lib/rate-limit.ts` before production (currently 9999 for dev)
+- RATE_LIMITS: `free: 1/2`, `donor: 5/20`, `admin: 9999/9999` — all enforced in `lib/rate-limit.ts` via `limitsFor(email)`; donor emails via `DONOR_EMAILS` env var (comma-separated), admin via `ADMIN_EMAIL`
 
 ### Phase 4: Engine Refinement ✅ COMPLETE
 - [x] **Adaptive Scanner** — `lib/github.ts`
@@ -288,9 +288,21 @@ Run `npx prisma migrate dev` after schema changes.
   - Account actions: Sign Out (Supabase `signOut()`), Delete Account with typed confirmation modal (must type `"delete"` to enable)
   - `DELETE /api/user` (`app/api/user/route.ts`): deletes `code_embeddings` + `embedding_jobs` (Supabase admin), `Analysis` + `RateLimit` (Prisma), then `auth.admin.deleteUser` to invalidate account
   - Profile link added to `UserMenu` dropdown (`components/auth/UserMenu.tsx`)
+  - **Tier badge** next to username: amber "Admin", violet "☕ Donor", neutral "Free" — resolved server-side from `GET /api/rate-limit` response `tier` field
 - [x] **Admin Guard** — `POST /api/analyze` returns `{ adminOnly: true }` (HTTP 403) for non-admin users; fail-closed: `!ADMIN_EMAIL || userEmail !== ADMIN_EMAIL`
 - [x] **Featured Sample Page** — `/samples/codebase-narrator` — static zero-cost demo, no auth required
 - [x] **Donation / Support Modal** — `components/main/DonationModal.tsx`; surfaced in nav (always visible) + admin-only card on `/analyze`
+- [x] **Homepage Production Polish** — `components/main/landing-sections.tsx`
+  - "Current Status" amber banner between access tiers and "How it works" — explains admin-only restriction, donor benefit ("full access immediately — 5 analyses and 20 chats"), links to BMC modal + sample page
+  - "☕ Support" button on homepage opens `DonationModal` (same as nav bar) — `useState` + `DonationModal` mounted in `LandingSections`
+  - Rate limit numbers corrected: "1 analysis · 2 chats per day (donors: 5 analyses · 20 chats)"
+  - "What you get" section expanded with **AI Health Audit** and **PDF Export** cards; last two cards centered via separate `lg:w-2/3 mx-auto` grid
+- [x] **Multi-tier Rate Limiting** — `lib/rate-limit.ts`
+  - Three tiers: `RATE_LIMITS` (free: 1/2), `DONOR_RATE_LIMITS` (5/20), `ADMIN_RATE_LIMITS` (9999/9999)
+  - `isAdmin(email)` checks `ADMIN_EMAIL`; `isDonor(email)` checks `DONOR_EMAILS` (comma-separated); `limitsFor(email)` picks tier — admin takes priority over donor
+  - All three check functions (`checkAndIncrementAnalysis`, `checkAndIncrementChat`, `getRateLimitStatus`) accept optional `email` and use `limitsFor()`
+  - `GET /api/rate-limit` returns `tier: "admin" | "donor" | "free"` for frontend display
+  - Donor emails managed via `DONOR_EMAILS` env var — no DB changes needed to grant/revoke access
 - [ ] CI/CD deployment
 - [ ] Mobile responsiveness audit
 - [ ] `ARCHITECT.md` for RAG engine design
@@ -320,7 +332,7 @@ Run `npx prisma migrate dev` after schema changes.
 - Props: `isOpen: boolean`, `onClose: () => void`
 - Framer Motion `AnimatePresence`; backdrop click closes modal
 - BMC link: `https://buymeacoffee.com/taehoonryu04`; secondary "Explore Sample →" → `/samples/codebase-narrator`
-- Mounted in `Navigation.tsx` (always visible "☕ Support" button) and `app/analyze/page.tsx` (admin-only card)
+- Mounted in `Navigation.tsx` (always visible "☕ Support" button), `app/analyze/page.tsx` (admin-only card), and `components/main/landing-sections.tsx` (homepage "Current Status" section "☕ Support" button)
 
 ## Featured Sample Page — Implementation Notes (Phase 6 ✅ COMPLETE)
 

@@ -3,17 +3,51 @@ import { prisma } from "@/lib/db/prisma";
 /**
  * Per-user rate limiting (24-hour rolling window)
  *
- * Limits:
- * - Analysis: 5 per day (free tier)
- * - Chat:     50 per day (free tier)
+ * Tiers (production):
+ * - Anonymous / signed-in (no donation): 1 analysis · 2 chats per day
+ * - Donor: 5 analyses · 20 chats per day
+ * - Admin: unlimited (9999)
  *
+ * Donor emails: DONOR_EMAILS env var (comma-separated).
+ * Admin email:  ADMIN_EMAIL env var (single address).
  * userId = Supabase Auth user ID (same as Analysis.userId)
  */
 
 export const RATE_LIMITS = {
-    analysis: 9999, // TODO: set to 5 before production
-    chat: 9999,     // TODO: set to 50 before production
+    analysis: 1,
+    chat: 2,
 } as const;
+
+export const DONOR_RATE_LIMITS = {
+    analysis: 5,
+    chat: 20,
+} as const;
+
+export const ADMIN_RATE_LIMITS = {
+    analysis: 9999,
+    chat: 9999,
+} as const;
+
+export function isDonor(email: string | null | undefined): boolean {
+    if (!email) return false;
+    const donors = (process.env.DONOR_EMAILS ?? "")
+        .split(",")
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+    return donors.includes(email.toLowerCase());
+}
+
+export function isAdmin(email: string | null | undefined): boolean {
+    if (!email) return false;
+    const adminEmail = process.env.ADMIN_EMAIL;
+    return !!adminEmail && email.toLowerCase() === adminEmail.toLowerCase();
+}
+
+function limitsFor(email: string | null | undefined) {
+    if (isAdmin(email)) return ADMIN_RATE_LIMITS;
+    if (isDonor(email)) return DONOR_RATE_LIMITS;
+    return RATE_LIMITS;
+}
 
 const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -52,12 +86,12 @@ function resetAt(windowStart: Date): Date {
  *
  * @returns RateLimitResult — allowed=false if limit exceeded
  */
-export async function checkAndIncrementAnalysis(userId: string): Promise<RateLimitResult> {
+export async function checkAndIncrementAnalysis(userId: string, email?: string | null): Promise<RateLimitResult> {
+    const limits = limitsFor(email);
     const now = new Date();
     const existing = await prisma.rateLimit.findUnique({ where: { userId } });
 
     if (!existing || isWindowExpired(existing.windowStart)) {
-        // New window: reset and count this request as 1
         await prisma.rateLimit.upsert({
             where: { userId },
             update: { analysisCount: 1, windowStart: now },
@@ -66,17 +100,17 @@ export async function checkAndIncrementAnalysis(userId: string): Promise<RateLim
         return {
             allowed: true,
             current: 1,
-            limit: RATE_LIMITS.analysis,
-            remaining: RATE_LIMITS.analysis - 1,
+            limit: limits.analysis,
+            remaining: limits.analysis - 1,
             resetAt: new Date(now.getTime() + WINDOW_MS),
         };
     }
 
-    if (existing.analysisCount >= RATE_LIMITS.analysis) {
+    if (existing.analysisCount >= limits.analysis) {
         return {
             allowed: false,
             current: existing.analysisCount,
-            limit: RATE_LIMITS.analysis,
+            limit: limits.analysis,
             remaining: 0,
             resetAt: resetAt(existing.windowStart),
         };
@@ -90,8 +124,8 @@ export async function checkAndIncrementAnalysis(userId: string): Promise<RateLim
     return {
         allowed: true,
         current: updated.analysisCount,
-        limit: RATE_LIMITS.analysis,
-        remaining: RATE_LIMITS.analysis - updated.analysisCount,
+        limit: limits.analysis,
+        remaining: limits.analysis - updated.analysisCount,
         resetAt: resetAt(updated.windowStart),
     };
 }
@@ -100,7 +134,8 @@ export async function checkAndIncrementAnalysis(userId: string): Promise<RateLim
  * Check chat rate limit and increment counter.
  * Used by the Phase 3 chat endpoint.
  */
-export async function checkAndIncrementChat(userId: string): Promise<RateLimitResult> {
+export async function checkAndIncrementChat(userId: string, email?: string | null): Promise<RateLimitResult> {
+    const limits = limitsFor(email);
     const now = new Date();
     const existing = await prisma.rateLimit.findUnique({ where: { userId } });
 
@@ -113,17 +148,17 @@ export async function checkAndIncrementChat(userId: string): Promise<RateLimitRe
         return {
             allowed: true,
             current: 1,
-            limit: RATE_LIMITS.chat,
-            remaining: RATE_LIMITS.chat - 1,
+            limit: limits.chat,
+            remaining: limits.chat - 1,
             resetAt: new Date(now.getTime() + WINDOW_MS),
         };
     }
 
-    if (existing.chatCount >= RATE_LIMITS.chat) {
+    if (existing.chatCount >= limits.chat) {
         return {
             allowed: false,
             current: existing.chatCount,
-            limit: RATE_LIMITS.chat,
+            limit: limits.chat,
             remaining: 0,
             resetAt: resetAt(existing.windowStart),
         };
@@ -137,8 +172,8 @@ export async function checkAndIncrementChat(userId: string): Promise<RateLimitRe
     return {
         allowed: true,
         current: updated.chatCount,
-        limit: RATE_LIMITS.chat,
-        remaining: RATE_LIMITS.chat - updated.chatCount,
+        limit: limits.chat,
+        remaining: limits.chat - updated.chatCount,
         resetAt: resetAt(updated.windowStart),
     };
 }
@@ -147,15 +182,16 @@ export async function checkAndIncrementChat(userId: string): Promise<RateLimitRe
  * Read-only status for the current user's rate limit usage.
  * Used by GET /api/rate-limit.
  */
-export async function getRateLimitStatus(userId: string): Promise<RateLimitStatus> {
+export async function getRateLimitStatus(userId: string, email?: string | null): Promise<RateLimitStatus> {
+    const limits = limitsFor(email);
     const now = new Date();
     const record = await prisma.rateLimit.findUnique({ where: { userId } });
 
     if (!record || isWindowExpired(record.windowStart)) {
         const reset = new Date(now.getTime() + WINDOW_MS);
         return {
-            analysis: { current: 0, limit: RATE_LIMITS.analysis, remaining: RATE_LIMITS.analysis, resetAt: reset },
-            chat: { current: 0, limit: RATE_LIMITS.chat, remaining: RATE_LIMITS.chat, resetAt: reset },
+            analysis: { current: 0, limit: limits.analysis, remaining: limits.analysis, resetAt: reset },
+            chat: { current: 0, limit: limits.chat, remaining: limits.chat, resetAt: reset },
         };
     }
 
@@ -163,14 +199,14 @@ export async function getRateLimitStatus(userId: string): Promise<RateLimitStatu
     return {
         analysis: {
             current: record.analysisCount,
-            limit: RATE_LIMITS.analysis,
-            remaining: Math.max(0, RATE_LIMITS.analysis - record.analysisCount),
+            limit: limits.analysis,
+            remaining: Math.max(0, limits.analysis - record.analysisCount),
             resetAt: reset,
         },
         chat: {
             current: record.chatCount,
-            limit: RATE_LIMITS.chat,
-            remaining: Math.max(0, RATE_LIMITS.chat - record.chatCount),
+            limit: limits.chat,
+            remaining: Math.max(0, limits.chat - record.chatCount),
             resetAt: reset,
         },
     };

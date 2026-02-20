@@ -278,7 +278,7 @@ The document is a structured technical report: cover block (repo metadata, star 
 **Solution.** Two independent enforcement layers with different storage backends:
 
 **Layer 1 — Per-user rolling window (authenticated, Prisma).**
-`lib/rate-limit.ts` maintains a `RateLimit` row per user with `analysisCount`, `chatCount`, and `windowStart`. `checkAndIncrementAnalysis()` / `checkAndIncrementChat()` check whether `Date.now() - windowStart > 86_400_000ms`; if true, the counter resets to 1; otherwise it increments and checks against the limit. Requests over the limit return HTTP 429 with a `Retry-After` header. Limits: 5 analyses/day, 50 chat messages/day.
+`lib/rate-limit.ts` maintains a `RateLimit` row per user with `analysisCount`, `chatCount`, and `windowStart`. `checkAndIncrementAnalysis()` / `checkAndIncrementChat()` check whether `Date.now() - windowStart > 86_400_000ms`; if true, the counter resets to 1; otherwise it increments and checks against the limit. Requests over the limit return HTTP 429 with a `Retry-After` header. Three tiers resolved by `limitsFor(email)`: free users (1 analysis · 2 chats/day), donors (5 · 20/day, managed via `DONOR_EMAILS` env var), admin (9999 · 9999/day, via `ADMIN_EMAIL`). Admin takes priority over donor. `GET /api/rate-limit` returns the resolved `tier` field so the profile page can display the correct badge and usage bars.
 
 **Layer 2 — Anonymous IP cap (unauthenticated, Supabase).**
 `lib/usage.ts:checkAnonAnalysisLimit()` queries `usage_logs` for `analyze` events from the same IP in the last 24 hours. If count ≥ 1, the request is rejected before any GitHub or Gemini API call is made. On Supabase query failure, the function **fails open** (returns `true`) — a deliberate trade-off: transient DB errors should not lock out legitimate users, and the cost of an occasional missed enforcement is lower than degraded availability.
@@ -320,7 +320,8 @@ GITHUB_CLIENT_SECRET=your_oauth_app_client_secret
 # Auth
 NEXTAUTH_SECRET=         # openssl rand -base64 32
 NEXTAUTH_URL=http://localhost:3000
-ADMIN_EMAIL=             # GitHub email of the account that can run analyses
+ADMIN_EMAIL=             # GitHub email of the account that can run analyses (unlimited tier)
+DONOR_EMAILS=            # Comma-separated donor emails (5 analyses · 20 chats/day)
 
 # Database (Prisma)
 DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres

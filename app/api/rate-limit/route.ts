@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getRateLimitStatus } from "@/lib/rate-limit";
+import { getRateLimitStatus, isDonor, isAdmin } from "@/lib/rate-limit";
 
 /**
  * GET /api/rate-limit
@@ -20,9 +20,15 @@ export async function GET() {
             );
         }
 
-        const status = await getRateLimitStatus(session.user.id);
+        const status = await getRateLimitStatus(session.user.id, session.user.email);
 
-        return NextResponse.json(status);
+        const userEmail = session.user.email ?? null;
+        const tier =
+            isAdmin(userEmail) ? "admin"
+            : isDonor(userEmail) ? "donor"
+            : "free";
+
+        return NextResponse.json({ ...status, tier });
     } catch (error) {
         console.error("❌ Failed to fetch rate limit status:", error);
         return NextResponse.json(

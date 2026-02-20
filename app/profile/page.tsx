@@ -15,6 +15,7 @@ interface RateLimitEntry {
 interface UsageStats {
     analysis: RateLimitEntry;
     chat: RateLimitEntry;
+    tier: "admin" | "donor" | "free";
 }
 
 function UsageBar({ label, current, limit }: { label: string; current: number; limit: number }) {
@@ -269,9 +270,22 @@ export default function ProfilePage() {
                                 </div>
                             )}
                             <div className="min-w-0">
-                                <p className="text-lg font-bold text-neutral-900 dark:text-white truncate">
-                                    {githubUsername}
-                                </p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-lg font-bold text-neutral-900 dark:text-white truncate">
+                                        {githubUsername}
+                                    </p>
+                                    {usage && (
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                            usage.tier === "admin"
+                                                ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700"
+                                                : usage.tier === "donor"
+                                                ? "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400 border border-violet-300 dark:border-violet-700"
+                                                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border border-neutral-300 dark:border-neutral-700"
+                                        }`}>
+                                            {usage.tier === "admin" ? "Admin" : usage.tier === "donor" ? "☕ Donor" : "Free"}
+                                        </span>
+                                    )}
+                                </div>
                                 {email && (
                                     <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">
                                         {email}

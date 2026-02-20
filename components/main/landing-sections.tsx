@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { motion, useInView } from "framer-motion";
 import Link from "next/link";
+import { DonationModal } from "@/components/main/DonationModal";
 
 // ── Scroll-reveal wrapper ─────────────────────────────────────────────────────
 function Reveal({
@@ -190,6 +191,8 @@ function ChatPreview() {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export function LandingSections() {
+    const [showDonation, setShowDonation] = useState(false);
+
     return (
         <div className="bg-white dark:bg-neutral-950">
 
@@ -238,7 +241,7 @@ export function LandingSections() {
                                         "Analyze private repositories using your GitHub token",
                                         "Save analysis history — revisit any past result",
                                         "Codebase Chat — ask questions about any analyzed repo",
-                                        "Rate limits: 5 analyses · 50 chat messages per day",
+                                        "Rate limits: 1 analysis · 2 chats per day (donors: 5 analyses · 20 chats)",
                                     ].map((item) => (
                                         <li key={item} className="flex items-start gap-2">
                                             <svg className="mt-0.5 w-4 h-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 16 16">
@@ -252,6 +255,47 @@ export function LandingSections() {
                             </div>
                         </Reveal>
                     </div>
+                </div>
+            </section>
+
+            {/* ── Current Status ────────────────────────────── */}
+            <section className="py-8 px-4 bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-800/40">
+                <div className="container mx-auto max-w-4xl">
+                    <Reveal>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                                    <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest">Current Status</span>
+                                </div>
+                                <p className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
+                                    Live analysis runs on a free-tier Gemini API quota. Until a donation funds an API upgrade,
+                                    new analyses are restricted to the administrator.{" "}
+                                    <strong className="font-semibold">Donors receive full access immediately</strong>{" "}
+                                    — 5 analyses and 20 chats per day. Try the sample below to see the full feature set.
+                                </p>
+                            </div>
+                            <div className="flex gap-2 shrink-0 flex-wrap">
+                                <button
+                                    onClick={() => setShowDonation(true)}
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
+                                        bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600
+                                        text-white transition-colors"
+                                >
+                                    ☕ Support
+                                </button>
+                                <Link
+                                    href="/samples/codebase-narrator"
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
+                                        border border-amber-400 dark:border-amber-600
+                                        text-amber-700 dark:text-amber-400
+                                        hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                                >
+                                    Try Sample →
+                                </Link>
+                            </div>
+                        </div>
+                    </Reveal>
                 </div>
             </section>
 
@@ -272,7 +316,7 @@ export function LandingSections() {
                         <FeatureCard
                             step="Step 01"
                             title="Paste a GitHub URL"
-                            description="Public repositories work without any account — 1 free analysis per day as a guest. Sign in with GitHub for unlimited analyses and history."
+                            description="Public repositories work without any account — 1 free analysis per day as a guest. Sign in with GitHub to save history and analyze private repositories."
                             detail="Supports any github.com/owner/repo URL. No cloning, no local setup required."
                             auth="free"
                             delay={0.1}
@@ -493,6 +537,25 @@ export function LandingSections() {
                             </Reveal>
                         ))}
                     </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-5 lg:w-2/3 mx-auto">
+                        {[
+                            {
+                                title: "AI Health Audit",
+                                desc: "Security, maintainability, and architecture scored independently — each with severity-ranked findings and specific recommendations.",
+                            },
+                            {
+                                title: "PDF Export",
+                                desc: "Download the full analysis as a vector PDF — cover block, all sections, and health audit with severity colors included.",
+                            },
+                        ].map((item, i) => (
+                            <Reveal key={item.title} delay={0.05 * (6 + i)}>
+                                <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 hover:border-neutral-400 dark:hover:border-neutral-600 transition-colors duration-200">
+                                    <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">{item.title}</h3>
+                                    <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">{item.desc}</p>
+                                </div>
+                            </Reveal>
+                        ))}
+                    </div>
                 </div>
             </section>
 
@@ -536,6 +599,8 @@ export function LandingSections() {
                     <span>Built with Next.js · Gemini 2.5 Flash · Supabase</span>
                 </div>
             </footer>
+
+            <DonationModal isOpen={showDonation} onClose={() => setShowDonation(false)} />
         </div>
     );
 }

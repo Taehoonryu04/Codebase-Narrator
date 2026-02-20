@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
                 console.log(`🚫 Anon rate limit exceeded for IP ${ip}`);
                 return NextResponse.json(
                     {
-                        error: "Guest analysis limit reached (1/day). Sign in with GitHub for unlimited analyses.",
+                        error: "Guest analysis limit reached (1/day). Sign in with GitHub to save history and analyze private repositories.",
                         upgradeRequired: true,
                     },
                     { status: 429 }
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
         // Step 2c: Enforce rate limit (authenticated users only)
         if (authenticatedUserId) {
-            const rateLimit = await checkAndIncrementAnalysis(authenticatedUserId);
+            const rateLimit = await checkAndIncrementAnalysis(authenticatedUserId, userEmail);
             if (!rateLimit.allowed) {
                 const retryAfterSecs = Math.ceil((rateLimit.resetAt.getTime() - Date.now()) / 1000);
                 console.log(`🚫 Rate limit exceeded for user ${authenticatedUserId}`);

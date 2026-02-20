@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
         }
 
         const userId = session.user.id;
+        const userEmail = session.user.email ?? null;
 
         // Step 2: Validate
         const body = await request.json();
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
         const { repoFullName, message, history } = validation.data;
 
         // Step 3: Rate limit
-        const rateLimit = await checkAndIncrementChat(userId);
+        const rateLimit = await checkAndIncrementChat(userId, userEmail);
         if (!rateLimit.allowed) {
             const retryAfterSecs = Math.ceil((rateLimit.resetAt.getTime() - Date.now()) / 1000);
             return NextResponse.json(
