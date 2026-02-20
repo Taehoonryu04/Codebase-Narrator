@@ -159,6 +159,8 @@ export async function getRepoFileTree(
                     /\.(mp4|mp3|wav|avi|mov)$/i,
                     /\.(zip|tar|gz|rar|7z)$/i,
                     /\.(pdf|doc|docx|xls|xlsx)$/i,
+                    // Auto-generated sample data (self-referential, pollutes RAG context)
+                    /^data\/sample-analysis\.ts$/,
                     // Lock files (too large/not useful)
                     /yarn\.lock$/,
                     /package-lock\.json$/,

@@ -350,22 +350,63 @@ Read the new run alongside the current `SAMPLE_ANALYSIS` and compare on these cr
 
 If the new run wins: replace `SAMPLE_ANALYSIS` verbatim (no mixing). If current is better: keep current, inform the user.
 
-**`SAMPLE_QA` current state:** All 4 entries replaced with real Gemini responses. Questions:
-1. "How does the hybrid search pipeline work?"
-2. "Walk me through the full system data flow — from GitHub URL submission to AI chat responses"
-3. "Walk me through the full RAG chat data flow"
-4. "How does the adaptive file scorer decide which files to send to Gemini?"
+**`SAMPLE_QA` current state:** All 4 entries contain real Gemini responses. Questions and entry id markers:
+1. `id: "hybrid-search"` — "How does the hybrid search pipeline work?"
+2. `id: "atomic-swap"` — "Walk me through the full system data flow — from GitHub URL submission to AI chat responses"
+3. `id: "source-traceability"` — "How does the source traceability system work — from chunk storage to clickable source chips in the chat UI?"
+4. `id: "adaptive-scorer"` — "How does the adaptive file scorer decide which files to send to Gemini?"
 
-**To replace a SAMPLE_QA entry with a real Gemini response:**
+**RAG pollution warning:** `data/sample-analysis.ts` is excluded from file indexing via `lib/github.ts` `excludePatterns` (`/^data\/sample-analysis\.ts$/`). Without this, the file gets embedded and retrieved as RAG context, contaminating Gemini's chat answers with stale/circular data. If the exclusion is ever removed, re-run the analysis to refresh embeddings.
 
-**Step 1 — Collect data**
-- In `/chat?repo=Taehoonryu04/codebase-narrator`, ask the question.
-- Open DevTools → Network → EventStream (the `chat` request). Save the full SSE stream (all `data: {...}` lines) to `q<N>.md`.
+---
 
-**Step 2 — Write and run a Python script** (NEVER use the Edit tool — it fails on Unicode and backtick-heavy content)
+**To update a SAMPLE_QA entry with a new Gemini response:**
+
+**Step 0 — Parallel reads (one round)**
+
+Read simultaneously:
+- `qN.md` — the new SSE response file the user provided
+- The current `SAMPLE_QA[N]` entry from `data/sample-analysis.ts` (grep for the `id` marker above to find the line offset, then read ~150 lines)
+
+**Step 1 — Compare: replace or keep?**
+
+Compare new vs current on these signals. **Replace only if new is strictly better overall.**
+
+| Signal | Criteria |
+|---|---|
+| `outputTokens` (from done event `stats`) | Higher = more thorough Gemini response |
+| Technical depth | Specific file/function/line references win over generic prose |
+| Structure | Numbered sections > bold-header sections for technical Q&A |
+| Mermaid | Present and covers the right scope; diagram placed after explanation > before |
+| Sources (non-circular) | More real-file sources = better RAG coverage |
+| Unique detail | Covers aspects the current version misses |
+
+- If **new wins**: proceed to Step 2 (full replacement).
+- If **current wins**: keep current text. If current has no Mermaid diagram, add one using the "insert diagram" pattern in Step 3b.
+
+**Step 2 — Design the Mermaid diagram**
+
+Always fix or upgrade the Mermaid — even if the new response's diagram "works," apply the established clean style:
+
+**Mermaid style rules (non-negotiable):**
+- Node labels: plain `[text]` only — no `()`, `{}`, `:`, `+`, or `-->` inside labels
+- Use ` - ` (hyphen) as label separator: `[embedText - gemini-embedding-001 768 dims]`
+- Use `and` instead of `+`: `[rrfScore and matchedBy]`
+- Subgraph names: always quoted — `subgraph Foo["Foo - description"]` — no raw parens or slashes in unquoted names
+- Cross-subgraph connections: define **outside** all subgraph blocks
+- Node IDs: alphanumeric + underscore only (`D_ERR` not `D.ERR`)
+- Direction: `flowchart TD` for multi-step flows, `flowchart LR` for linear pipelines
+- Dotted arrows `-.->` for optional/reference/annotation connections
+
+If the new response has **no Mermaid at all**, write one showing the process flow. For scoring/tiered systems, show the pipeline (input → score → sort → output), not an enumeration of all rules (the text already covers that).
+
+**Step 3a — Replace entire entry (Python script)**
+
+NEVER use the Edit tool on `data/sample-analysis.ts` — it fails on Unicode and backtick-heavy content. Always write and run a Python script.
 
 ```python
-import json, os
+#!/usr/bin/env python3
+import json, os, re
 
 BASE = '/Users/ryutaehoon/Documents/codebasenarrator'
 
@@ -377,45 +418,125 @@ def ts_escape(text):
 
 def parse_sse(path):
     parts, sources = [], []
-    for line in open(path).read().split('\n'):
-        if not line.startswith('data: '): continue
-        obj = json.loads(line[6:])
-        if obj['type'] == 'chunk': parts.append(obj['text'])
-        elif obj['type'] == 'done': sources = obj['sources']
+    with open(path) as f:
+        for line in f.read().split('\n'):
+            if not line.startswith('data: '): continue
+            obj = json.loads(line[6:])
+            if obj['type'] == 'chunk': parts.append(obj['text'])
+            elif obj['type'] == 'done': sources = obj['sources']
     return ''.join(parts), sources
 
 answer, sources = parse_sse(f'{BASE}/qN.md')
 
 # Filter circular self-references
 sources = [s for s in sources if s['filePath'] != 'data/sample-analysis.ts']
+print(f'Valid sources: {[s["filePath"] + ":" + str(s["chunkIndex"]) for s in sources]}')
+
+# Replace mermaid block with improved version
+IMPROVED_MERMAID = """flowchart TD
+    ..."""  # write your clean diagram here per style rules above
+answer = re.sub(r'```mermaid\n.*?\n```', '```mermaid\n' + IMPROVED_MERMAID + '\n```', answer, flags=re.DOTALL)
+# If response has no mermaid, insert one after the intro paragraph:
+# intro, rest = answer.split('\n\n', 1)
+# answer = intro + '\n\n```mermaid\n' + IMPROVED_MERMAID + '\n```\n\n' + rest
 
 # Read source content from disk (NOT from the done event — may be stale/truncated)
 def read_lines(fp, s, e):
-    lines = open(os.path.join(BASE, fp)).readlines()
+    with open(os.path.join(BASE, fp)) as f:
+        lines = f.readlines()
     return ''.join(lines[s-1:e])
 
-# Build the entry and write to data/sample-analysis.ts using string search/replace
+# Build TypeScript sources array
+source_items = []
+for s in sources:
+    content = read_lines(s['filePath'], s['startLine'], s['endLine'])
+    content_esc = ts_escape(content)
+    item = (
+        '            {\n'
+        f'                filePath: "{s["filePath"]}",\n'
+        f'                chunkIndex: {s["chunkIndex"]},\n'
+        f'                content: `{content_esc}`,\n'
+        f'                startLine: {s["startLine"]},\n'
+        f'                endLine: {s["endLine"]},\n'
+        f'                rrfScore: {s["rrfScore"]},\n'
+        f'                matchedBy: "{s["matchedBy"]}",\n'
+        '            }'
+    )
+    source_items.append(item)
+
+sources_ts = ',\n'.join(source_items)
+answer_esc = ts_escape(answer)
+
+new_entry = (
+    '    {\n'
+    '        id: "ENTRY_ID",\n'
+    '        question: "QUESTION TEXT",\n'
+    f'        answer: `{answer_esc}`,\n'
+    '        sources: [\n'
+    f'{sources_ts},\n'
+    '        ],\n'
+    '    },'
+)
+
+with open(f'{BASE}/data/sample-analysis.ts') as f:
+    file_content = f.read()
+
+# Boundary markers — replace from this entry's id up to the next entry's id
+old_entry_start = '    {\n        id: "ENTRY_ID",'
+next_entry_marker = '    {\n        id: "NEXT_ID",'  # see boundary table below
+
+idx_start = file_content.index(old_entry_start)
+idx_end = file_content.index(next_entry_marker)
+new_content = file_content[:idx_start] + new_entry + '\n' + file_content[idx_end:]
+
+with open(f'{BASE}/data/sample-analysis.ts', 'w') as f:
+    f.write(new_content)
+print('Done!')
 ```
 
-Key rules:
-- `ts_escape` order is critical: backslashes → backticks → `${`
-- Source `content` must be read from disk at `startLine`/`endLine`, not from the done event
-- Drop all `data/sample-analysis.ts` sources (circular RAG self-references)
-- If all sources are circular, store an empty `sources: []`
-- If the question changed, update `question:` to match the actual Gemini answer
+**Entry boundary markers:**
+- Q1 `"hybrid-search"` → next: `"atomic-swap"`
+- Q2 `"atomic-swap"` → next: `"source-traceability"`
+- Q3 `"source-traceability"` → next: `"adaptive-scorer"`
+- Q4 `"adaptive-scorer"` → last entry; use `'];\n'` as `next_entry_marker` (end of array)
 
-**Step 3 — Fix Mermaid syntax errors** (if diagram fails to render)
+**Step 3b — Insert diagram into existing entry (when keeping current text)**
 
-Common causes in AI-generated Mermaid inside `["..."]` labels:
-- Nested `[...]` inside a label (e.g., `["foo [bar] baz"]`) — remove inner brackets
-- `{key:value}` patterns — remove `{}` and `:` or simplify to plain text
-- `()` in labels — remove (sanitizeMermaid handles this but pre-fixing is cleaner)
+When current answer wins but has no Mermaid, insert a diagram at the right point without replacing the full entry. In the `.ts` file, backticks inside template literals are stored as `\``. Search/replace on raw file content:
 
-Fix these directly with the Edit tool after the Python script runs.
+```python
+#!/usr/bin/env python3
+BASE = '/Users/ryutaehoon/Documents/codebasenarrator'
 
-**Step 4 — Verify**
+MERMAID = """flowchart TD
+    ..."""  # clean diagram per style rules
+
+with open(f'{BASE}/data/sample-analysis.ts') as f:
+    content = f.read()
+
+# Match the exact text surrounding the insertion point
+# Backticks in the file appear as \` (backslash + backtick) — match them with \\` in Python
+# Triple backtick fence = \\`\\`\\` in Python string → \`\`\` in file → ``` in rendered output
+search = "UNIQUE TEXT BEFORE INSERTION\\n\\nNEXT SECTION HEADING"
+replacement = (
+    "UNIQUE TEXT BEFORE INSERTION\n\n"
+    "\\`\\`\\`mermaid\n" + MERMAID + "\n\\`\\`\\`\n\n"
+    "NEXT SECTION HEADING"
+)
+
+assert search in content, "search string not found"
+new_content = content.replace(search, replacement, 1)
+
+with open(f'{BASE}/data/sample-analysis.ts', 'w') as f:
+    f.write(new_content)
+print('Done!')
+```
+
+**Step 4 — Verify and clean up**
+
 ```bash
 npx tsc --noEmit  # must be 0 errors
+rm qN.md update_qN.py  # remove temp files
 ```
 
 ---
