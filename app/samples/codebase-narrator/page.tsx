@@ -191,6 +191,7 @@ export default function SamplePage() {
                                         This is a pre-generated analysis of the Codebase Narrator project itself.
                                         All content was produced by a real Gemini 2.5 Flash analysis run — not
                                         fabricated. New analyses are currently restricted to the administrator.
+                                        The underlying model is updated periodically, so analysis quality can improve over time.
                                     </p>
                                 </div>
                             </div>
@@ -214,8 +215,9 @@ export default function SamplePage() {
                                     </p>
                                     <p className="mt-0.5 text-sm text-blue-700 dark:text-blue-400">
                                         These are curated responses from a real RAG chat session on this codebase.
-                                        Click a question to see the AI response with source traceability. Sign in to
-                                        ask your own questions about any GitHub repository.
+                                        Click a question to see the AI response with source traceability.
+                                        Live responses vary each run — the AI is non-deterministic.
+                                        The underlying model is updated periodically, so answer quality can improve over time.
                                     </p>
                                 </div>
                             </div>
