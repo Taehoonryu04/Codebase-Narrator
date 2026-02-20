@@ -284,7 +284,7 @@ Run `npx prisma migrate dev` after schema changes.
 
 - [x] **User Profile Page** — `app/profile/page.tsx` (client component)
   - User info card: GitHub avatar, username, email, member-since date (from Supabase Auth `user_metadata`)
-  - Usage dashboard: animated progress bars for analysis + chat quotas fetched from `GET /api/rate-limit`; shows `∞` when limit is 9999 (dev mode); sustainability note for free-tier users
+  - Usage dashboard: animated progress bars for analysis + chat quotas fetched from `GET /api/rate-limit`; shows `∞` when limit is 9999 (admin tier); sustainability note for free-tier users
   - Account actions: Sign Out (Supabase `signOut()`), Delete Account with typed confirmation modal (must type `"delete"` to enable)
   - `DELETE /api/user` (`app/api/user/route.ts`): deletes `code_embeddings` + `embedding_jobs` (Supabase admin), `Analysis` + `RateLimit` (Prisma), then `auth.admin.deleteUser` to invalidate account
   - Profile link added to `UserMenu` dropdown (`components/auth/UserMenu.tsx`)
