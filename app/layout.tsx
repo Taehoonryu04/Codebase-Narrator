@@ -12,7 +12,20 @@ const ubuntu = Ubuntu({
 
 export const metadata: Metadata = {
   title: "Codebase Narrator",
-  description: "AI-powered GitHub repository analysis tool",
+  description:
+    "AI-powered GitHub repository analyzer. Get instant architectural insights, code quality audits, and an interactive RAG chat interface for any public GitHub repository.",
+  openGraph: {
+    title: "Codebase Narrator",
+    description:
+      "AI-powered GitHub repository analyzer. Get instant architectural insights, code quality audits, and an interactive RAG chat interface for any public GitHub repository.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Codebase Narrator",
+    description:
+      "AI-powered GitHub repository analyzer. Architectural insights, code quality audits, and RAG chat — powered by Gemini.",
+  },
 };
 
 export default function RootLayout({
