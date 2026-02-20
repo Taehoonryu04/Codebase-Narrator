@@ -359,4 +359,6 @@ npm start      # Production server
 
 ## License
 
-MIT
+© 2026 Taehoonryu04. All rights reserved.
+
+The source code is publicly visible for portfolio and educational review. No permission is granted to use, copy, deploy, or redistribute this project without explicit written consent.
