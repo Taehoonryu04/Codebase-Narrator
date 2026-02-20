@@ -350,13 +350,73 @@ Read the new run alongside the current `SAMPLE_ANALYSIS` and compare on these cr
 
 If the new run wins: replace `SAMPLE_ANALYSIS` verbatim (no mixing). If current is better: keep current, inform the user.
 
-**`SAMPLE_QA` current state:** 4 hand-crafted architect-level Q&A entries (not from a real chat session — pending replacement). Questions:
+**`SAMPLE_QA` current state:** All 4 entries replaced with real Gemini responses. Questions:
 1. "How does the hybrid search pipeline work?"
-2. "Explain the atomic embedding swap strategy"
+2. "Walk me through the full system data flow — from GitHub URL submission to AI chat responses"
 3. "Walk me through the full RAG chat data flow"
 4. "How does the adaptive file scorer decide which files to send to Gemini?"
 
-To replace with real data: sign in as admin, navigate to `/chat?repo=Taehoonryu04/codebase-narrator`, ask each question above, copy the full markdown answer + source chip data (filePath, startLine, endLine, content, matchedBy, rrfScore) into the corresponding `SAMPLE_QA` entry in `data/sample-analysis.ts`.
+**To replace a SAMPLE_QA entry with a real Gemini response:**
+
+**Step 1 — Collect data**
+- In `/chat?repo=Taehoonryu04/codebase-narrator`, ask the question.
+- Open DevTools → Network → EventStream (the `chat` request). Save the full SSE stream (all `data: {...}` lines) to `q<N>.md`.
+
+**Step 2 — Write and run a Python script** (NEVER use the Edit tool — it fails on Unicode and backtick-heavy content)
+
+```python
+import json, os
+
+BASE = '/Users/ryutaehoon/Documents/codebasenarrator'
+
+def ts_escape(text):
+    text = text.replace('\\', '\\\\')  # MUST be first
+    text = text.replace('`', '\\`')
+    text = text.replace('${', '\\${')
+    return text
+
+def parse_sse(path):
+    parts, sources = [], []
+    for line in open(path).read().split('\n'):
+        if not line.startswith('data: '): continue
+        obj = json.loads(line[6:])
+        if obj['type'] == 'chunk': parts.append(obj['text'])
+        elif obj['type'] == 'done': sources = obj['sources']
+    return ''.join(parts), sources
+
+answer, sources = parse_sse(f'{BASE}/qN.md')
+
+# Filter circular self-references
+sources = [s for s in sources if s['filePath'] != 'data/sample-analysis.ts']
+
+# Read source content from disk (NOT from the done event — may be stale/truncated)
+def read_lines(fp, s, e):
+    lines = open(os.path.join(BASE, fp)).readlines()
+    return ''.join(lines[s-1:e])
+
+# Build the entry and write to data/sample-analysis.ts using string search/replace
+```
+
+Key rules:
+- `ts_escape` order is critical: backslashes → backticks → `${`
+- Source `content` must be read from disk at `startLine`/`endLine`, not from the done event
+- Drop all `data/sample-analysis.ts` sources (circular RAG self-references)
+- If all sources are circular, store an empty `sources: []`
+- If the question changed, update `question:` to match the actual Gemini answer
+
+**Step 3 — Fix Mermaid syntax errors** (if diagram fails to render)
+
+Common causes in AI-generated Mermaid inside `["..."]` labels:
+- Nested `[...]` inside a label (e.g., `["foo [bar] baz"]`) — remove inner brackets
+- `{key:value}` patterns — remove `{}` and `:` or simplify to plain text
+- `()` in labels — remove (sanitizeMermaid handles this but pre-fixing is cleaner)
+
+Fix these directly with the Edit tool after the Python script runs.
+
+**Step 4 — Verify**
+```bash
+npx tsc --noEmit  # must be 0 errors
+```
 
 ---
 
