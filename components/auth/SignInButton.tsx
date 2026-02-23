@@ -15,14 +15,17 @@ export function SignInButton() {
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
-        const reset = () => setIsLoading(false);
+        const onPageShow = () => setIsLoading(false);
+        const onVisibilityChange = () => {
+            if (document.visibilityState === "visible") setIsLoading(false);
+        };
         // Fires when page is restored from bfcache (user pressed back)
-        window.addEventListener("pageshow", reset);
-        // Fires when tab becomes visible again
-        document.addEventListener("visibilitychange", reset);
+        window.addEventListener("pageshow", onPageShow);
+        // Fires when tab becomes visible again after navigating back
+        document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
-            window.removeEventListener("pageshow", reset);
-            document.removeEventListener("visibilitychange", reset);
+            window.removeEventListener("pageshow", onPageShow);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
         };
     }, []);
 
