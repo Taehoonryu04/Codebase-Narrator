@@ -67,9 +67,8 @@ This is a **deliberate architectural decision**, not a shortcoming. It demonstra
 - Google Gemini Embedding 001 — vector embeddings (`gemini-embedding-001`, 768-dim MRL truncation)
 
 **Backend & Infrastructure**
-- Supabase (PostgreSQL + `pgvector` extension)
-- Prisma ORM (User, Session, RateLimit, Analysis tables)
-- NextAuth.js v5 with GitHub OAuth
+- Supabase (PostgreSQL + `pgvector` extension, GitHub OAuth)
+- Prisma ORM (RateLimit, Analysis tables)
 - GitHub REST API via `@octokit/rest` (Git Tree API, recursive)
 - Zod for runtime schema validation
 
@@ -314,12 +313,8 @@ GEMINI_API_KEY=your_gemini_api_key
 
 # GitHub (optional — raises rate limit from 60/hr to 5000/hr)
 GITHUB_TOKEN=your_github_pat
-GITHUB_CLIENT_ID=your_oauth_app_client_id
-GITHUB_CLIENT_SECRET=your_oauth_app_client_secret
 
 # Auth
-NEXTAUTH_SECRET=         # openssl rand -base64 32
-NEXTAUTH_URL=http://localhost:3000
 ADMIN_EMAIL=             # GitHub email of the account that can run analyses (unlimited tier)
 DONOR_EMAILS=            # Comma-separated donor emails (5 analyses · 20 chats/day)
 

@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     try {
         // Step 1: Parse & validate
         const body = await request.json();
-        console.log("📥 Analysis request received:", body);
+        console.log("📥 Analysis request received");
 
         const validationResult = analyzeRequestSchema.safeParse(body);
 
@@ -298,33 +298,3 @@ export async function POST(request: NextRequest) {
     }
 }
 
-/**
- * GET /api/analyze?url=...
- *
- * Simple test endpoint (optional)
- */
-export async function GET(request: NextRequest) {
-    const { searchParams } = new URL(request.url);
-    const url = searchParams.get("url");
-
-    if (!url) {
-        return NextResponse.json(
-            {
-                message: "Usage: POST /api/analyze with { repoUrl: string }",
-                example: {
-                    repoUrl: "https://github.com/vercel/next.js",
-                    maxFiles: 20,
-                },
-            },
-            { status: 400 }
-        );
-    }
-
-    // Redirect GET request to POST
-    return POST(
-        new NextRequest(request.url, {
-            method: "POST",
-            body: JSON.stringify({ repoUrl: url }),
-        })
-    );
-}
