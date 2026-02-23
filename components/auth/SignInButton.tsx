@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 /**
  * SignInButton Component
@@ -13,6 +13,18 @@ import { useState } from "react";
 export function SignInButton() {
     const { signInWithGitHub } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        const reset = () => setIsLoading(false);
+        // Fires when page is restored from bfcache (user pressed back)
+        window.addEventListener("pageshow", reset);
+        // Fires when tab becomes visible again
+        document.addEventListener("visibilitychange", reset);
+        return () => {
+            window.removeEventListener("pageshow", reset);
+            document.removeEventListener("visibilitychange", reset);
+        };
+    }, []);
 
     const handleSignIn = async () => {
         try {

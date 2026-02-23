@@ -45,10 +45,7 @@ GITHUB_TOKEN=xxx                       # Optional: increases rate limits (5000/h
 
 # Phase 2: Authentication & Database
 DATABASE_URL=postgresql://...          # PostgreSQL connection string
-NEXTAUTH_SECRET=xxx                    # Generate: openssl rand -base64 32
-NEXTAUTH_URL=http://localhost:3000     # Change for production
-GITHUB_CLIENT_ID=xxx                   # GitHub OAuth app credentials
-GITHUB_CLIENT_SECRET=xxx
+DIRECT_URL=postgresql://...            # Direct connection (Supabase requires both)
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 
@@ -62,7 +59,7 @@ SUPABASE_SERVICE_ROLE_KEY=xxx          # For server-side vector operations
 - **Styling:** Tailwind CSS v4, Framer Motion
 - **AI:** Google Gemini 2.5 Flash (use `gemini-2.5-flash` model ID)
 - **APIs:** GitHub REST API (@octokit/rest), Google Generative AI SDK
-- **Auth:** NextAuth.js v5, GitHub OAuth
+- **Auth:** Supabase Auth (GitHub OAuth)
 - **Database:** PostgreSQL, Prisma ORM, Supabase
 - **Validation:** Zod for runtime type safety
 
@@ -76,7 +73,6 @@ lib/
 │   ├── gemini.ts         # AI integration
 │   ├── embeddings.ts     # Gemini embedding generation
 │   └── rag.ts            # RAG pipeline: chunk, embed, retrieve
-├── auth/                 # NextAuth configuration
 ├── db/                   # Prisma client
 ├── supabase/             # Supabase client (server/client)
 ├── github.ts             # GitHub API wrapper
@@ -303,7 +299,7 @@ Run `npx prisma migrate dev` after schema changes.
   - All three check functions (`checkAndIncrementAnalysis`, `checkAndIncrementChat`, `getRateLimitStatus`) accept optional `email` and use `limitsFor()`
   - `GET /api/rate-limit` returns `tier: "admin" | "donor" | "free"` for frontend display
   - Donor emails managed via `DONOR_EMAILS` env var — no DB changes needed to grant/revoke access
-- [ ] CI/CD deployment
+- [x] CI/CD deployment (Vercel — https://codebase-narrator.vercel.app)
 - [ ] Mobile responsiveness audit
 - [ ] `ARCHITECT.md` for RAG engine design
 
