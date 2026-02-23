@@ -23,6 +23,8 @@ Built to demonstrate production-grade system design — not just "call an LLM an
 
 ## Live Demo & Resource Management
 
+**Live:** [https://codebase-narrator.vercel.app](https://codebase-narrator.vercel.app)
+
 **Status: Live demo is in Read-Only / Sample-Access mode.**
 
 The hosted instance operates on free-tier infrastructure (Google Gemini API, Supabase pgvector). To ensure sustained availability for all visitors without exhausting quota, **new repository analysis is restricted to the administrator account**. All other features are fully accessible.
