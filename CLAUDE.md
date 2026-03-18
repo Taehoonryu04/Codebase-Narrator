@@ -300,6 +300,7 @@ Run `npx prisma migrate dev` after schema changes.
   - `GET /api/rate-limit` returns `tier: "admin" | "donor" | "free"` for frontend display
   - Donor emails managed via `DONOR_EMAILS` env var — no DB changes needed to grant/revoke access
 - [x] CI/CD deployment (Vercel — https://codebase-narrator.vercel.app)
+- [x] **Database Security Hardening** — RLS enabled on all 10 public tables (`005_enable_rls.sql`); `SET search_path = public, pg_catalog` on `match_code_chunks` + `keyword_search_code_chunks` (`006_fix_search_path.sql`). All access via Prisma/service role bypasses RLS — no app changes needed.
 - [ ] Mobile responsiveness audit
 - [ ] `ARCHITECT.md` for RAG engine design
 
