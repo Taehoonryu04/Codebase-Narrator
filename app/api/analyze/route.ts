@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import {
     parseGitHubUrl,
     getRepoInfo,
@@ -221,10 +221,17 @@ export async function POST(request: NextRequest) {
             estimatedCostUsd,
         });
 
-        // Step 10: Store embeddings for RAG (authenticated users only, fire-and-forget)
+        // Step 10: Store embeddings for RAG (authenticated users only)
+        // Use `after` so Vercel keeps the function alive until embeddings are stored.
         if (authenticatedUserId) {
-            storeEmbeddings(authenticatedUserId, repoInfo.fullName, fileContents).catch((err) => {
-                console.error("⚠️ Embedding storage failed (non-blocking):", err);
+            const userId = authenticatedUserId;
+            const repoFullName = repoInfo.fullName;
+            after(async () => {
+                try {
+                    await storeEmbeddings(userId, repoFullName, fileContents);
+                } catch (err) {
+                    console.error("⚠️ Embedding storage failed (non-blocking):", err);
+                }
             });
         }
 
