@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# local tool exports (e.g. Supabase linter CSV) - keep infra details out of the repo
+*.csv
+
 # vercel
 .vercel
 
